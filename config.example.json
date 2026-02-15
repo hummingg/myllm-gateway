@@ -1,0 +1,62 @@
+{
+  "scenarioPriorities": [
+    {
+      "scenario": "math",
+      "priorityType": "capability_first",
+      "modelRanking": [
+        "groq/mixtral-8x7b-32768",
+        "siliconflow/Qwen2.5-7B-Instruct"
+      ],
+      "freeTierWillingness": 0.95,
+      "description": "数学场景优先，提高免费意愿度到95%"
+    },
+    {
+      "scenario": "code",
+      "priorityType": "speed_first",
+      "modelRanking": [
+        "groq/llama-3.1-8b-instant"
+      ],
+      "freeTierWillingness": 0.9,
+      "description": "代码生成场景"
+    },
+    {
+      "scenario": "long_context",
+      "priorityType": "capability_first",
+      "modelRanking": [
+        "siliconflow/Qwen2.5-7B-Instruct"
+      ],
+      "freeTierWillingness": 0.7,
+      "description": "长文本场景"
+    },
+    {
+      "scenario": "translation",
+      "priorityType": "expiry_first",
+      "modelRanking": [],
+      "freeTierWillingness": 0.8,
+      "description": "翻译场景"
+    },
+    {
+      "scenario": "analysis",
+      "priorityType": "capability_first",
+      "modelRanking": [
+        "groq/mixtral-8x7b-32768"
+      ],
+      "freeTierWillingness": 0.6,
+      "description": "分析场景"
+    },
+    {
+      "scenario": "creative",
+      "priorityType": "expiry_first",
+      "modelRanking": [],
+      "freeTierWillingness": 0.5,
+      "description": "创意写作场景"
+    },
+    {
+      "scenario": "general",
+      "priorityType": "expiry_first",
+      "modelRanking": [],
+      "freeTierWillingness": 0.3,
+      "description": "通用对话场景"
+    }
+  ]
+}

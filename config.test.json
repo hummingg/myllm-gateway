@@ -1,0 +1,30 @@
+{
+  "scenarioPriorities": [
+    {
+      "scenario": "math",
+      "priorityType": "capability_first",
+      "modelRanking": [
+        "groq/mixtral-8x7b-32768",
+        "siliconflow/Qwen2.5-7B-Instruct"
+      ],
+      "freeTierWillingness": 0.95,
+      "description": "数学场景优先（测试配置）"
+    },
+    {
+      "scenario": "code",
+      "priorityType": "speed_first",
+      "modelRanking": [
+        "groq/llama-3.1-8b-instant"
+      ],
+      "freeTierWillingness": 0.85,
+      "description": "代码场景（降低意愿度测试）"
+    },
+    {
+      "scenario": "general",
+      "priorityType": "expiry_first",
+      "modelRanking": [],
+      "freeTierWillingness": 0.5,
+      "description": "通用场景（提高意愿度测试）"
+    }
+  ]
+}

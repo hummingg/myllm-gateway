@@ -1,0 +1,32 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+
+# Logs
+logs
+*.log
+server.log
+
+# Environment variables
+.env
+.env.local
+
+# Data files (quota tracking)
+data/quota.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Test coverage
+coverage
+.nyc_output

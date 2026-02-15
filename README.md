@@ -1,0 +1,611 @@
+# MyLLM Gateway
+
+**个人专属的多模型智能网关** | 免费优先 | 智能路由 | 多提供商统一管理
+
+管理1800万+免费tokens，自动优化AI使用成本
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
+
+---
+
+## ✨ 功能特性
+
+- **🆓 免费额度优先**: 同场景能力下，自动优先使用有免费额度的模型
+- **🧠 智能路由**: 根据任务类型、输入长度、成本优先级自动选择最佳模型
+- **💰 成本优化**: 支持预算控制，自动选择性价比最高的模型
+- **🏢 多供应商**: 支持 OpenAI、Anthropic、Moonshot、Groq 等多个供应商
+- **🔄 降级策略**: 主模型失败时自动切换到备选模型
+- **📊 实时监控**: 请求统计、成本分析、性能监控
+- **🔌 OpenAI 兼容**: 完全兼容 OpenAI API 格式，无缝迁移
+
+## 🚀 快速开始
+
+### 1. 安装依赖
+
+```bash
+cd llm-gateway
+npm install
+```
+
+### 2. 配置环境变量
+
+```bash
+cp .env.example .env
+# 编辑 .env 文件，填入你的 API Keys
+```
+
+### 3. 启动服务
+
+```bash
+# 开发模式
+npm run dev
+
+# 生产模式
+npm run build
+npm start
+```
+
+服务默认在 `http://localhost:3000` 启动。
+
+## 🆓 免费额度优先功能
+
+网关会自动在同场景能力下优先选择有免费额度的模型，帮你最大程度节省成本！
+
+### 智能路由策略（先过期优先）
+
+当多个免费模型都可用时，网关会优先选择**先过期**的模型，避免浪费！
+
+**示例场景：**
+- Groq（月额度，3天后重置）：剩余 800K tokens
+- SiliconFlow（日额度，8小时后重置）：剩余 300K tokens
+
+**路由决策：** 优先使用 SiliconFlow（8小时后过期），因为 Groq 还有 3 天时间可以用。
+
+### 支持的免费模型
+
+| 供应商 | 模型 | 免费额度 | 重置周期 |
+|--------|------|---------|---------|
+| Aliyun | qwen3-max-2026-01-23 | 1M tokens | 永不刷新 |
+| Aliyun | glm-4.7 | 1M tokens | 永不刷新 |
+| Aliyun | qwen3-max-preview | 1M tokens | 永不刷新 |
+| Aliyun | 其他15个模型 | 各1M tokens | 永不刷新 |
+
+**Aliyun免费额度说明**:
+- 提供18个模型，每个模型1M tokens一次性免费额度
+- 注意设置“免费额度用完即停”
+- 总计约1800万tokens免费额度
+- 用完即止，不会自动刷新
+- 包含qwen、glm、llama等多种模型
+
+### 使用方式
+
+**方式 1：自动模式（推荐）**
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "messages": [{"role": "user", "content": "你好"}]
+  }'
+```
+网关会自动在代码生成场景优先使用免费的 Groq，长文本场景使用免费的 SiliconFlow。
+
+**方式 2：强制免费模式**
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "prefer_free_tier": true,
+    "messages": [{"role": "user", "content": "写一个 Python 快排"}]
+  }'
+```
+
+**方式 3：质量优先（忽略免费）**
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "priority": "quality",
+    "messages": [{"role": "user", "content": "重要任务"}]
+  }'
+```
+
+## ⚙️ 配置说明
+
+### 环境变量
+
+```env
+# Anthropic (Claude)
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_BASE_URL=https://api.anthropic.com  # 可选
+
+# Moonshot (月之暗面 Kimi)
+MOONSHOT_API_KEY=sk-...
+
+# SiliconFlow (免费额度)
+SILICONFLOW_API_KEY=sk-...
+
+# Aliyun (阿里云百炼，18个免费模型)
+ALIYUN_API_KEY=sk-...
+
+# 网关认证（可选）
+GATEWAY_AUTH_TOKEN=your-secure-token
+```
+
+**注意**:
+- 只需配置你要使用的提供商的API Key
+- Aliyun提供18个模型的一次性免费额度，总计约1800万tokens
+- 未配置的提供商将自动禁用
+
+### 路由规则
+
+网关支持以下路由策略：
+
+| 场景 | 首选模型 | 免费替代 | 选择依据 |
+|------|---------|---------|---------|
+| 长文本 (>50K) | Kimi K2.5 | SiliconFlow Qwen | 256K 上下文 |
+| 代码生成 | Claude 3.5 Sonnet | Groq Llama 3.1 | 代码能力强 |
+| 数学推理 | o1-mini | Groq Llama 3.1 | 推理能力优秀 |
+| 经济模式 | GPT-4o Mini | Groq/SiliconFlow | 成本最低 |
+
+## 📡 API 使用
+
+### 聊天完成
+
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \ 
+  -H "Authorization: Bearer your-token" \ 
+  -d '{
+    "model": "auto",
+    "messages": [{"role": "user", "content": "你好"}]
+  }'
+```
+
+### 指定模型
+
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token" \ 
+  -d '{
+    "model": "claude-3-5-sonnet-20241022",
+    "messages": [{"role": "user", "content": "写一段 Python 代码"}]
+  }'
+```
+
+### 流式响应
+
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token" \ 
+  -d '{
+    "model": "auto",
+    "stream": true,
+    "messages": [{"role": "user", "content": "讲个故事"}]
+  }'
+```
+
+## 🔌 在OpenAI兼容客户端中使用
+
+LLM Gateway完全兼容OpenAI API格式，可以在任何支持OpenAI API的工具和SDK中使用。
+
+### Python SDK
+
+```python
+from openai import OpenAI
+
+# 配置客户端指向LLM Gateway
+client = OpenAI(
+    base_url="http://localhost:3000/v1",
+    api_key="dummy-key"  # 如果网关未启用认证，可以使用任意值
+)
+
+# 使用自动路由
+response = client.chat.completions.create(
+    model="auto",  # 让网关自动选择最佳模型
+    messages=[
+        {"role": "user", "content": "用Python写一个快速排序"}
+    ]
+)
+
+print(response.choices[0].message.content)
+
+# 指定具体模型
+response = client.chat.completions.create(
+    model="qwen3-max-2026-01-23",  # 使用阿里云模型
+    messages=[
+        {"role": "user", "content": "你好"}
+    ]
+)
+```
+
+### Node.js SDK
+
+```javascript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+    baseURL: 'http://localhost:3000/v1',
+    apiKey: 'dummy-key'
+});
+
+const response = await client.chat.completions.create({
+    model: 'auto',
+    messages: [
+        { role: 'user', content: '写一个JavaScript函数' }
+    ]
+});
+
+console.log(response.choices[0].message.content);
+```
+
+### Continue (VSCode/JetBrains插件)
+
+在Continue配置文件 `~/.continue/config.json` 中添加：
+
+```json
+{
+  "models": [
+    {
+      "title": "LLM Gateway",
+      "provider": "openai",
+      "model": "auto",
+      "apiBase": "http://localhost:3000/v1",
+      "apiKey": "dummy-key"
+    }
+  ]
+}
+```
+
+### Cursor
+
+在Cursor设置中配置自定义模型：
+
+1. 打开 Settings → Models
+2. 添加自定义OpenAI兼容端点：
+   - Base URL: `http://localhost:3000/v1`
+   - API Key: `dummy-key`
+   - Model: `auto` 或具体模型名
+
+### Open WebUI
+
+在Open WebUI中添加外部连接：
+
+1. 进入 Settings → Connections
+2. 添加OpenAI API：
+   - API Base URL: `http://localhost:3000/v1`
+   - API Key: `dummy-key`
+3. 选择模型时可以使用 `auto` 或具体模型名
+
+### ChatBox / NextChat
+
+配置API设置：
+
+```
+API地址: http://localhost:3000/v1
+API密钥: dummy-key
+模型: auto
+```
+
+### LangChain
+
+```python
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    base_url="http://localhost:3000/v1",
+    api_key="dummy-key",
+    model="auto"
+)
+
+response = llm.invoke("你好")
+print(response.content)
+```
+
+### 可用模型列表
+
+查看所有可用模型：
+
+```bash
+curl http://localhost:3000/v1/models
+```
+
+当前支持的模型：
+- **Anthropic**: claude-3-5-sonnet-20241022, claude-3-5-haiku-20241022, claude-3-opus-20240229
+- **Moonshot**: moonshot-v1-8k, moonshot-v1-128k
+- **SiliconFlow**: Qwen2.5-7B-Instruct
+- **Aliyun**: qwen3-max-2026-01-23, glm-4.7, qwen3-max-preview, 等18个模型
+- **特殊**: `auto` (智能路由)
+
+## 📊 监控端点
+
+### 获取统计信息
+
+```bash
+curl http://localhost:3000/stats
+```
+
+返回：
+```json
+{
+  "requests24h": 1234,
+  "cost24h": 12.34,
+  "averageLatency24h": 2300,
+  "freeTier": {
+    "total": 5,
+    "available": 3,
+    "models": [
+      {"model": "llama-3.1-8b-instant", "remaining": 800000, "nextReset": "2024-02-15"}
+    ]
+  }
+}
+```
+
+### 查看额度状态
+
+```bash
+curl http://localhost:3000/quota
+```
+
+### 额度预警（支持即将过期提醒）
+
+```bash
+# 查看额度不足预警
+curl http://localhost:3000/quota/alerts?threshold=5000
+
+# 查看即将过期预警（24小时内）
+curl http://localhost:3000/quota/alerts?threshold=5000&expiry_hours=24
+```
+
+返回示例：
+```json
+{
+  "threshold": 5000,
+  "expiry_warning_hours": 24,
+  "total_alerts": 2,
+  "low_quota": {
+    "count": 1,
+    "alerts": [
+      {
+        "provider": "siliconflow",
+        "model": "Qwen2.5-7B-Instruct",
+        "remaining": 3000,
+        "reason": "low_quota",
+        "message": "额度不足: 仅剩 3,000 tokens"
+      }
+    ]
+  },
+  "expiring_soon": {
+    "count": 1,
+    "alerts": [
+      {
+        "provider": "siliconflow",
+        "model": "Qwen2.5-7B-Instruct",
+        "remaining": 450000,
+        "reason": "expiring_soon",
+        "message": "即将过期: 8小时后重置，剩余 450,000 tokens 未使用，建议尽快使用！"
+      }
+    ]
+  }
+}
+```
+
+### 注册新的免费额度模型
+
+```bash
+curl -X POST http://localhost:3000/quota/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "groq",
+    "model": "mixtral-8x7b",
+    "totalQuota": 1000000,
+    "resetPeriod": "monthly",
+    "priority": 1
+  }'
+```
+
+### 生成报告
+
+```bash
+# 日报
+curl http://localhost:3000/report/day
+
+# 周报
+curl http://localhost:3000/report/week
+
+# 月报
+curl http://localhost:3000/report/month
+```
+
+## 🏗️ 架构设计
+
+```
+User Request
+    ↓
+Free Tier Check (免费额度检查)
+    ↓
+Router Engine (智能路由)
+    ↓
+Provider Adapter (供应商适配)
+    ↓
+LLM API
+    ↓
+Quota Update (额度更新)
+    ↓
+Response + Metrics
+```
+
+## 🎯 免费额度路由策略
+
+### 1. 场景免费意愿度 ⭐
+
+不同场景使用免费模型的**意愿度**不同：
+
+| 场景类型 | 免费意愿度 | 说明 | 示例 |
+|---------|-----------|------|------|
+| **代码生成** | 90% | 非常愿意用免费模型 | 代码对质量要求适中，省钱优先 |
+| **数学推理** | 80% | 较愿意用免费模型 | 免费模型推理能力够用 |
+| **翻译** | 80% | 较愿意用免费模型 | 翻译任务简单 |
+| **长文本** | 70% | 中等意愿 | 视内容重要性而定 |
+| **创意写作** | 50% | 平衡使用 | 创意需要一定质量 |
+| **分析任务** | 60% | 中等意愿 | 平衡使用 |
+| **通用对话** | 30% | 较倾向付费模型 | 聊天体验更重要 |
+
+**意愿度如何工作：**
+- 90% 意愿度 = 90% 概率使用免费模型
+- 30% 意愿度 = 30% 概率使用免费模型（70% 概率用付费）
+
+**实际例子：**
+
+```
+代码场景（90%意愿）:
+用户: "写一个 Python 快排"
+→ 90% 概率使用 Groq 免费模型
+→ 10% 概率使用 GPT-4o（付费）
+
+聊天场景（30%意愿）:
+用户: "你好，今天天气怎么样？"
+→ 30% 概率使用免费模型
+→ 70% 概率使用 GPT-4o / Claude（付费体验更好）
+```
+
+### 2. 场景差异化优先级
+
+在决定使用免费模型后，不同场景还有不同的**模型选择策略**：
+
+| 场景类型 | 优先级策略 | 模型排序 |
+|---------|-----------|---------|
+| **代码生成** | 速度优先 | Groq > SiliconFlow |
+| **数学推理** | 能力优先 | Mixtral > Qwen |
+| **长文本** | 能力优先 | Qwen > Mixtral |
+| **通用对话** | 先过期优先 | 按过期时间 |
+
+### 3. 先过期优先（默认策略）
+对于没有特殊需求的场景，**优先使用先过期的模型**，避免浪费即将重置的额度！
+
+**排序逻辑：**
+1. 比较过期时间（先过期的排在前面）
+2. 过期时间相同，按优先级排序
+
+### 4. 额度检查
+每次请求前检查剩余额度，不足时自动降级到付费模型。
+
+### 5. 备选策略
+免费额度用完后，自动切换到同能力的付费模型。
+
+## 🔧 自定义配置
+
+### 场景优先级自定义 ⭐ NEW
+
+现在支持用户自定义场景优先级！在项目根目录创建 `config.json`：
+
+```json
+{
+  "scenarioPriorities": [
+    {
+      "scenario": "math",
+      "priorityType": "capability_first",
+      "modelRanking": ["groq/mixtral-8x7b-32768"],
+      "freeTierWillingness": 0.95,
+      "description": "数学场景优先"
+    },
+    {
+      "scenario": "code",
+      "priorityType": "speed_first",
+      "modelRanking": ["groq/llama-3.1-8b-instant"],
+      "freeTierWillingness": 0.9
+    }
+  ]
+}
+```
+
+**可自定义内容：**
+- 场景检测顺序（数组顺序决定优先级）
+- 各场景的免费意愿度（0-1）
+- 场景的优先级类型（speed_first, capability_first, expiry_first）
+- 场景内的模型排名
+
+详细配置说明请查看 [SCENARIO_CONFIG.md](./SCENARIO_CONFIG.md)
+
+### 注册免费额度模型
+
+编辑 `src/config/default.ts` 可自定义：
+
+```typescript
+// 注册免费额度模型
+freeTierModels: [
+  {
+    provider: 'your-provider',
+    model: 'your-model',
+    totalQuota: 1000000,
+    resetPeriod: 'monthly',
+    priority: 1
+  }
+]
+```
+
+## 📝 成本对比
+
+| 模型 | 输入价格/1K | 输出价格/1K | 免费额度 | 特点 |
+|------|------------|------------|---------|------|
+| Groq Llama 3.1 | $0 | $0 | 1M/月 | 🆓 免费、快速 |
+| SiliconFlow Qwen | $0 | $0 | 500K/日 | 🆓 免费、中文好 |
+| GPT-4o Mini | $0.00015 | $0.0006 | - | 最经济 |
+| Claude 3 Haiku | $0.00025 | $0.00125 | - | 快速 |
+| GPT-4o | $0.005 | $0.015 | - | 全能 |
+| Claude 3.5 Sonnet | $0.003 | $0.015 | - | 代码强 |
+| Kimi K2.5 | $0.002 | $0.006 | - | 长文本 |
+
+## 🔒 安全建议
+
+1. 使用 `GATEWAY_AUTH_TOKEN` 启用 API 认证
+2. 在生产环境使用 HTTPS
+3. 定期轮换 API Keys
+4. 设置合理的 rate limit
+5. 监控异常使用模式
+
+## 🛠️ 技术栈
+
+- **Runtime**: Node.js 18+
+- **Language**: TypeScript 5.0
+- **Framework**: Express.js
+- **Logging**: Winston, Morgan
+- **Providers**: Anthropic, Moonshot, SiliconFlow, Aliyun SDKs
+
+## 🤝 贡献
+
+欢迎贡献代码、报告问题或提出建议！
+
+1. Fork 本仓库
+2. 创建你的特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交你的更改 (`git commit -m 'feat: Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启一个 Pull Request
+
+详细贡献指南请查看 [CONTRIBUTING.md](./CONTRIBUTING.md)
+
+## ⭐ Star History
+
+如果这个项目对你有帮助，请给个 Star ⭐️
+
+## 📄 License
+
+本项目采用 [MIT](./LICENSE) 许可证
+
+## 🙏 致谢
+
+感谢所有AI提供商提供的免费额度：
+- [Anthropic](https://www.anthropic.com/) - Claude系列模型
+- [Moonshot AI](https://www.moonshot.cn/) - Kimi系列模型
+- [SiliconFlow](https://siliconflow.cn/) - 开源模型托管
+- [阿里云百炼](https://www.aliyun.com/product/bailian) - 18个免费模型
+
+---
+
+Made with ❤️ for the AI community

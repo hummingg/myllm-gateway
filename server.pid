@@ -1,0 +1,1 @@
+ sleep 4 tail -50 server.log
