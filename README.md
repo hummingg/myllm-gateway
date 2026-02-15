@@ -25,7 +25,7 @@
 ### 1. 安装依赖
 
 ```bash
-cd llm-gateway
+cd myllm-gateway
 npm install
 ```
 
