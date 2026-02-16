@@ -94,6 +94,13 @@ export const defaultConfig: GatewayConfig = {
       baseUrl: 'https://api.minimaxi.com/v1',
       enabled: !!process.env.MINIMAX_API_KEY,
       models: ['MiniMax-M2.5', 'MiniMax-M2']
+    },
+    {
+      name: 'nvidia',
+      apiKey: process.env.NVIDIA_API_KEY || '',
+      baseUrl: 'https://integrate.api.nvidia.com/v1',
+      enabled: !!process.env.NVIDIA_API_KEY,
+      models: ['z-ai/glm5']
     }
   ],
   
@@ -452,6 +459,18 @@ export const defaultConfig: GatewayConfig = {
       costPer1KOutput: 0,
       capabilities: ['text', 'code'],
       priority: 2,
+      enabled: true
+    },
+    // NVIDIA 模型
+    {
+      id: 'z-ai/glm5',
+      name: 'GLM-5 (NVIDIA)',
+      provider: 'nvidia',
+      contextWindow: 128000,
+      costPer1KInput: 0,
+      costPer1KOutput: 0,
+      capabilities: ['text', 'code', 'reasoning'],
+      priority: 1,
       enabled: true
     }
   ],

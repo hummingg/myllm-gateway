@@ -258,3 +258,10 @@ export class MinimaxProvider extends OpenAIProvider {
     super(config, models);
   }
 }
+
+// NVIDIA 适配器（OpenAI 兼容）
+export class NvidiaProvider extends OpenAIProvider {
+  constructor(config: ProviderConfig, models: ModelConfig[]) {
+    super(config, models);
+  }
+}
