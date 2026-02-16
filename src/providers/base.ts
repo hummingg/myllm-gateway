@@ -251,3 +251,10 @@ export class AliyunProvider extends OpenAIProvider {
     super(config, models);
   }
 }
+
+// Minimax 适配器（OpenAI 兼容）
+export class MinimaxProvider extends OpenAIProvider {
+  constructor(config: ProviderConfig, models: ModelConfig[]) {
+    super(config, models);
+  }
+}

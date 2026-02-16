@@ -87,6 +87,13 @@ export const defaultConfig: GatewayConfig = {
         'MiniMax-M2.1',
         'qwen-flash-character'
       ]
+    },
+    {
+      name: 'minimax',
+      apiKey: process.env.MINIMAX_API_KEY || '',
+      baseUrl: 'https://api.minimaxi.com/v1',
+      enabled: !!process.env.MINIMAX_API_KEY,
+      models: ['MiniMax-M2.5', 'MiniMax-M2']
     }
   ],
   
@@ -421,6 +428,29 @@ export const defaultConfig: GatewayConfig = {
       costPer1KInput: 0,
       costPer1KOutput: 0,
       capabilities: ['text'],
+      priority: 2,
+      enabled: true
+    },
+    // MiniMax 模型
+    {
+      id: 'MiniMax-M2.5',
+      name: 'MiniMax M2.5',
+      provider: 'minimax',
+      contextWindow: 128000,
+      costPer1KInput: 0,
+      costPer1KOutput: 0,
+      capabilities: ['text', 'code', 'reasoning'],
+      priority: 1,
+      enabled: true
+    },
+    {
+      id: 'MiniMax-M2',
+      name: 'MiniMax M2',
+      provider: 'minimax',
+      contextWindow: 128000,
+      costPer1KInput: 0,
+      costPer1KOutput: 0,
+      capabilities: ['text', 'code'],
       priority: 2,
       enabled: true
     }

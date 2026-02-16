@@ -8,7 +8,7 @@ import { loadConfig } from './config/default.js';
 import { RoutingEngine } from './core/router.js';
 import { Monitor, RequestLog } from './core/monitor.js';
 import { QuotaManager } from './core/quota.js';
-import { BaseProvider, OpenAIProvider, AnthropicProvider, MoonshotProvider, GroqProvider, SiliconFlowProvider, AliyunProvider, ChatCompletionRequest } from './providers/base.js';
+import { BaseProvider, OpenAIProvider, AnthropicProvider, MoonshotProvider, GroqProvider, SiliconFlowProvider, AliyunProvider, MinimaxProvider, ChatCompletionRequest } from './providers/base.js';
 import { GatewayConfig, ModelConfig, ProviderConfig } from './types/config.js';
 
 class LLMGateway {
@@ -71,6 +71,9 @@ class LLMGateway {
           break;
         case 'aliyun':
           provider = new AliyunProvider(providerConfig, models);
+          break;
+        case 'minimax':
+          provider = new MinimaxProvider(providerConfig, models);
           break;
         default:
           console.log(`⚠️  未知供应商: ${providerConfig.name}`);
