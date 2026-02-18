@@ -60,6 +60,21 @@ export const UserPreferenceSchema = z.object({
   customRules: z.array(RoutingRuleSchema).optional()
 });
 
+// 重试配置
+export const RetryConfigSchema = z.object({
+  maxAttempts: z.number().min(1).max(10).default(3),
+  enableRerouting: z.boolean().default(true),
+  exponentialBackoff: z.boolean().default(true),
+  baseDelayMs: z.number().min(0).default(1000),
+  maxDelayMs: z.number().min(0).default(10000),
+  retryableErrors: z.array(z.string()).default([
+    'network_error',
+    'rate_limit',
+    'server_error',
+    'quota_exceeded'
+  ])
+});
+
 // 网关配置
 export const GatewayConfigSchema = z.object({
   server: z.object({
@@ -77,6 +92,7 @@ export const GatewayConfigSchema = z.object({
   }),
   scenarioPriorities: z.array(ScenarioPrioritySchema).optional(),
   user: UserPreferenceSchema,
+  retry: RetryConfigSchema.optional(),
   monitoring: z.object({
     enabled: z.boolean().default(true),
     logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
@@ -88,5 +104,6 @@ export type ModelConfig = z.infer<typeof ModelSchema>;
 export type ProviderConfig = z.infer<typeof ProviderSchema>;
 export type RoutingRule = z.infer<typeof RoutingRuleSchema>;
 export type UserPreference = z.infer<typeof UserPreferenceSchema>;
+export type RetryConfig = z.infer<typeof RetryConfigSchema>;
 export type GatewayConfig = z.infer<typeof GatewayConfigSchema>;
 export type ScenarioPriorityConfig = z.infer<typeof ScenarioPrioritySchema>;

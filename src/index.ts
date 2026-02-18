@@ -9,7 +9,9 @@ import { RoutingEngine } from './core/router.js';
 import { Monitor, RequestLog, FullRequestLog } from './core/monitor.js';
 import { QuotaManager } from './core/quota.js';
 import { BaseProvider, OpenAIProvider, AnthropicProvider, MoonshotProvider, GroqProvider, SiliconFlowProvider, AliyunProvider, MinimaxProvider, NvidiaProvider, ChatCompletionRequest } from './providers/base.js';
-import { GatewayConfig, ModelConfig, ProviderConfig } from './types/config.js';
+import { GatewayConfig, ModelConfig, ProviderConfig, RetryConfig } from './types/config.js';
+import { RetryManager } from './core/retry.js';
+import { ErrorType } from './types/error.js';
 
 class LLMGateway {
   private app: express.Application;
@@ -18,6 +20,7 @@ class LLMGateway {
   private monitor: Monitor;
   private quotaManager: QuotaManager;
   private providers: Map<string, BaseProvider> = new Map();
+  private retryManager: RetryManager;
 
   constructor() {
     this.app = express();
@@ -28,9 +31,26 @@ class LLMGateway {
       this.config.monitoring.logLevel,
       this.config.monitoring.metricsRetention
     );
-    
+
     this.initializeProviders();
     this.router.registerFreeTierModels();
+
+    // 初始化重试管理器
+    const retryConfig: RetryConfig = this.config.retry || {
+      maxAttempts: 3,
+      enableRerouting: true,
+      exponentialBackoff: true,
+      baseDelayMs: 1000,
+      maxDelayMs: 10000,
+      retryableErrors: [
+        'network_error',
+        'rate_limit',
+        'server_error',
+        'quota_exceeded'
+      ]
+    };
+    this.retryManager = new RetryManager(retryConfig, this.router, this.providers);
+
     this.setupMiddleware();
     this.setupRoutes();
   }
@@ -258,56 +278,56 @@ class LLMGateway {
     this.app.post('/v1/chat/completions', async (req, res) => {
       const startTime = Date.now();
       const requestId = crypto.randomUUID();
-      
+
       try {
         const { messages, model, temperature, max_tokens, stream } = req.body;
-        
+
         if (!messages || !Array.isArray(messages)) {
           return res.status(400).json({ error: 'Messages are required' });
         }
 
-        // 路由决策
-        const decision = this.router.decideModel(messages, {
+        // 初始路由决策
+        const initialDecision = this.router.decideModel(messages, {
           preferredModel: model,
           priority: req.body.priority || this.config.user.defaultPriority,
           preferFreeTier: req.body.prefer_free_tier !== false
         });
 
-        console.log(`[${requestId}] 路由: ${decision.model} (${decision.reason}) ${decision.isFreeTier ? '🆓' : '💰'}`);
+        console.log(`[${requestId}] 初始路由: ${initialDecision.model} (${initialDecision.reason}) ${initialDecision.isFreeTier ? '🆓' : '💰'}`);
 
         // 检查并使用额度
-        if (decision.isFreeTier) {
+        if (initialDecision.isFreeTier) {
           const estimatedTokens = messages.reduce((sum, m) => sum + m.content.length, 0) / 4 + 1000;
-          const hasQuota = await this.quotaManager.useQuota(decision.provider, decision.model, estimatedTokens);
-          
+          const hasQuota = await this.quotaManager.useQuota(initialDecision.provider, initialDecision.model, estimatedTokens);
+
           if (!hasQuota) {
             console.log(`[${requestId}] 免费额度不足，尝试备选模型`);
-            const fallback = decision.fallbackModels[0];
+            const fallback = initialDecision.fallbackModels[0];
             if (fallback) {
               const fallbackModel = this.router.getAvailableModels().find(m => m.id === fallback);
               if (fallbackModel) {
-                decision.model = fallback;
-                decision.provider = fallbackModel.provider;
-                decision.reason = '免费额度不足，使用备选';
-                decision.isFreeTier = this.quotaManager.hasFreeTier(fallbackModel.provider, fallback);
-                decision.estimatedCost = this.estimateCost(messages, decision.model);
+                initialDecision.model = fallback;
+                initialDecision.provider = fallbackModel.provider;
+                initialDecision.reason = '免费额度不足，使用备选';
+                initialDecision.isFreeTier = this.quotaManager.hasFreeTier(fallbackModel.provider, fallback);
+                initialDecision.estimatedCost = this.estimateCost(messages, initialDecision.model);
               }
             }
           }
         }
 
-        // 获取 provider
-        const provider = this.providers.get(decision.provider);
-        if (!provider) {
-          throw new Error(`Provider ${decision.provider} not available`);
-        }
-
         const request: ChatCompletionRequest = {
-          model: decision.model,
+          model: initialDecision.model,
           messages,
           temperature,
           maxTokens: max_tokens,
           stream: stream === true
+        };
+
+        const userPreference = {
+          preferredModel: model,
+          priority: req.body.priority || this.config.user.defaultPriority,
+          preferFreeTier: req.body.prefer_free_tier !== false
         };
 
         if (stream) {
@@ -317,15 +337,21 @@ class LLMGateway {
           res.setHeader('Connection', 'keep-alive');
 
           let fullContent = '';
+          let hasStarted = false;
+          let currentModel = initialDecision.model;
 
-          const response = await provider.streamChatCompletion(
+          const result = await this.retryManager.executeStreamWithRetry(
             request,
+            initialDecision,
+            messages,
+            userPreference,
             (chunk) => {
+              hasStarted = true;
               fullContent += chunk;
               res.write(`data: ${JSON.stringify({
                 id: requestId,
                 object: 'chat.completion.chunk',
-                model: decision.model,
+                model: currentModel,
                 choices: [{
                   delta: { content: chunk },
                   index: 0,
@@ -335,10 +361,53 @@ class LLMGateway {
             }
           );
 
+          // Update model after result is available
+          if (result.success) {
+            currentModel = result.decision.model;
+          }
+
+          if (!result.success) {
+            // 流式失败
+            if (hasStarted) {
+              // 已经开始发送数据，发送错误事件
+              res.write(`data: ${JSON.stringify({
+                error: {
+                  message: result.finalError?.message || '所有模型均失败',
+                  type: result.finalError?.type || 'gateway_error',
+                  attempts: result.attempts,
+                  errors: result.errors.map(e => ({
+                    provider: e.provider,
+                    model: e.model,
+                    type: e.type,
+                    message: e.message
+                  }))
+                }
+              })}\n\n`);
+            } else {
+              // 还没开始发送，可以返回正常错误
+              return res.status(500).json({
+                error: {
+                  message: result.finalError?.message || '所有模型均失败',
+                  type: result.finalError?.type || 'gateway_error',
+                  attempts: result.attempts,
+                  errors: result.errors.map(e => ({
+                    provider: e.provider,
+                    model: e.model,
+                    type: e.type,
+                    message: e.message
+                  }))
+                }
+              });
+            }
+            res.end();
+            return;
+          }
+
+          // 成功响应
           res.write(`data: ${JSON.stringify({
             id: requestId,
             object: 'chat.completion.chunk',
-            model: decision.model,
+            model: result.decision.model,
             choices: [{
               delta: {},
               index: 0,
@@ -348,22 +417,45 @@ class LLMGateway {
           res.write('data: [DONE]\n\n');
           res.end();
 
-          // 流式响应：使用累积的完整内容
+          // 记录日志
           const streamResponse = {
             content: fullContent,
-            finishReason: response.finishReason,
-            usage: response.usage
+            finishReason: 'stop',
+            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
           };
-          this.logRequest(requestId, decision, streamResponse, startTime, req.body);
+          this.logRequest(requestId, result.decision, streamResponse, startTime, req.body);
+
         } else {
           // 非流式响应
-          const response = await provider.chatCompletion(request);
+          const result = await this.retryManager.executeWithRetry(
+            request,
+            initialDecision,
+            messages,
+            userPreference
+          );
 
-          const result = {
+          if (!result.success) {
+            return res.status(500).json({
+              error: {
+                message: result.finalError?.message || '所有模型均失败',
+                type: result.finalError?.type || 'gateway_error',
+                attempts: result.attempts,
+                errors: result.errors.map(e => ({
+                  provider: e.provider,
+                  model: e.model,
+                  type: e.type,
+                  message: e.message
+                }))
+              }
+            });
+          }
+
+          const response = result.response;
+          const resultJson = {
             id: requestId,
             object: 'chat.completion',
             created: Math.floor(Date.now() / 1000),
-            model: decision.model,
+            model: result.decision.model,
             choices: [{
               index: 0,
               message: {
@@ -379,14 +471,14 @@ class LLMGateway {
             }
           };
 
-          res.json(result);
-          this.logRequest(requestId, decision, response, startTime, req.body);
+          res.json(resultJson);
+          this.logRequest(requestId, result.decision, response, startTime, req.body);
         }
 
       } catch (error: any) {
-        console.error(`[${requestId}] Error:`, error);
+        console.error(`[${requestId}] 未捕获错误:`, error);
         this.monitor.logError(error, { requestId });
-        
+
         res.status(500).json({
           error: {
             message: error.message,

@@ -272,19 +272,21 @@ export class RoutingEngine {
   // 主路由决策
   decideModel(
     messages: ChatMessage[],
-    userPreference?: { priority?: string; preferredModel?: string; preferFreeTier?: boolean }
+    userPreference?: { priority?: string; preferredModel?: string; preferFreeTier?: boolean },
+    context?: { excludedModels?: string[]; attemptNumber?: number; previousError?: any }
   ): RoutingDecision {
+    const excludedSet = new Set(context?.excludedModels || []);
     // 1. 如果用户明确指定了模型
     if (userPreference?.preferredModel && userPreference.preferredModel !== 'auto') {
       const model = this.modelMap.get(userPreference.preferredModel);
-      if (model && model.enabled) {
+      if (model && model.enabled && !excludedSet.has(model.id)) {
         const isFree = this.quotaManager.hasFreeTier(model.provider, model.id);
         return {
           model: model.id,
           provider: model.provider,
           reason: isFree ? '用户指定（免费额度）' : '用户指定',
           estimatedCost: isFree ? 0 : this.estimateCost(messages, model),
-          fallbackModels: this.getFallbackModels(model.id),
+          fallbackModels: this.getFallbackModels(model.id, excludedSet),
           isFreeTier: isFree
         };
       }
@@ -303,22 +305,22 @@ export class RoutingEngine {
     const useFreeTier = shouldUseFreeTier(scenarioConfig.freeTierWillingness, userPreference);
     
     if (useFreeTier) {
-      const freeModel = this.findBestFreeModel(inputLength, taskType);
+      const freeModel = this.findBestFreeModel(inputLength, taskType, excludedSet);
       if (freeModel) {
         const hoursUntilExpiry = Math.floor((freeModel.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
-        const timeText = hoursUntilExpiry < 24 
-          ? `${hoursUntilExpiry}小时后过期` 
+        const timeText = hoursUntilExpiry < 24
+          ? `${hoursUntilExpiry}小时后过期`
           : `${Math.floor(hoursUntilExpiry / 24)}天后过期`;
-        
+
         const priorityText = this.getPriorityTypeText(freeModel.priorityType);
         const willingnessText = getWillingnessDescription(scenarioConfig.freeTierWillingness);
-        
+
         return {
           model: freeModel.model,
           provider: freeModel.provider,
           reason: `场景: ${scenarioConfig.scenario} (${willingnessText}, ${priorityText}, ${freeModel.remaining.toLocaleString()} tokens, ${timeText})`,
           estimatedCost: 0,
-          fallbackModels: this.getFallbackModels(freeModel.model),
+          fallbackModels: this.getFallbackModels(freeModel.model, excludedSet),
           isFreeTier: true
         };
       }
@@ -329,33 +331,33 @@ export class RoutingEngine {
       if (this.matchesRule(rule, inputLength, taskType, userPreference?.priority)) {
         const targetModel = rule.targetModels[0];
         const model = this.modelMap.get(targetModel);
-        
-        if (model && model.enabled) {
+
+        if (model && model.enabled && !excludedSet.has(model.id)) {
           // 检查是否有同能力的免费模型（先过期优先）
-          const freeAlternative = this.findFreeAlternative(model, inputLength);
+          const freeAlternative = this.findFreeAlternative(model, inputLength, excludedSet);
           if (freeAlternative && userPreference?.preferFreeTier !== false) {
             const hoursUntilExpiry = Math.floor((freeAlternative.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
-            const timeText = hoursUntilExpiry < 24 
-              ? `${hoursUntilExpiry}小时后过期` 
+            const timeText = hoursUntilExpiry < 24
+              ? `${hoursUntilExpiry}小时后过期`
               : `${Math.floor(hoursUntilExpiry / 24)}天后过期`;
-            
+
             return {
               model: freeAlternative.model,
               provider: freeAlternative.provider,
               reason: `同场景免费替代 (${timeText}): ${rule.name}`,
               estimatedCost: 0,
-              fallbackModels: [model.id, ...(rule.fallbackModels || [])],
+              fallbackModels: [model.id, ...(rule.fallbackModels || [])].filter(m => !excludedSet.has(m)),
               isFreeTier: true
             };
           }
-          
+
           const isFree = this.quotaManager.hasFreeTier(model.provider, model.id);
           return {
             model: model.id,
             provider: model.provider,
             reason: `规则匹配: ${rule.name}`,
             estimatedCost: isFree ? 0 : this.estimateCost(messages, model),
-            fallbackModels: rule.fallbackModels || this.getFallbackModels(model.id),
+            fallbackModels: rule.fallbackModels ? rule.fallbackModels.filter(m => !excludedSet.has(m)) : this.getFallbackModels(model.id, excludedSet),
             isFreeTier: isFree
           };
         }
@@ -364,64 +366,68 @@ export class RoutingEngine {
 
     // 6. 默认模型
     const defaultModel = this.modelMap.get(this.config.routing.defaultModel)!;
-    const freeAlternative = this.findFreeAlternative(defaultModel, inputLength);
-    
+    const freeAlternative = this.findFreeAlternative(defaultModel, inputLength, excludedSet);
+
     if (freeAlternative && userPreference?.preferFreeTier !== false) {
       const hoursUntilExpiry = Math.floor((freeAlternative.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
-      const timeText = hoursUntilExpiry < 24 
-        ? `${hoursUntilExpiry}小时后过期` 
+      const timeText = hoursUntilExpiry < 24
+        ? `${hoursUntilExpiry}小时后过期`
         : `${Math.floor(hoursUntilExpiry / 24)}天后过期`;
-      
+
       return {
         model: freeAlternative.model,
         provider: freeAlternative.provider,
         reason: `默认模型（免费替代，${timeText}）`,
         estimatedCost: 0,
-        fallbackModels: [defaultModel.id],
+        fallbackModels: excludedSet.has(defaultModel.id) ? [] : [defaultModel.id],
         isFreeTier: true
       };
     }
-    
+
     const isFree = this.quotaManager.hasFreeTier(defaultModel.provider, defaultModel.id);
     return {
       model: defaultModel.id,
       provider: defaultModel.provider,
       reason: '默认模型',
       estimatedCost: isFree ? 0 : this.estimateCost(messages, defaultModel),
-      fallbackModels: this.getFallbackModels(defaultModel.id),
+      fallbackModels: this.getFallbackModels(defaultModel.id, excludedSet),
       isFreeTier: isFree
     };
   }
 
   // 查找最佳免费模型（支持场景优先级）
   private findBestFreeModel(
-    inputLength: number, 
-    taskTypes: string[]
-  ): { 
-    provider: string; 
-    model: string; 
+    inputLength: number,
+    taskTypes: string[],
+    excludedSet: Set<string> = new Set()
+  ): {
+    provider: string;
+    model: string;
     remaining: number;
     expiresAt: Date;
     priorityType: string;
   } | null {
     const freeModels = this.quotaManager.getAvailableFreeTiers();
     if (freeModels.length === 0) return null;
-    
+
     // 获取场景优先级配置
     const scenarioConfig = this.getScenarioPriorityConfig(taskTypes);
-    
+
     // 过滤符合条件的模型
     const candidates = freeModels.filter(freeModel => {
       const modelConfig = this.modelMap.get(freeModel.model);
       if (!modelConfig) return false;
-      
+
+      // 排除已失败的模型
+      if (excludedSet.has(freeModel.model)) return false;
+
       // 检查上下文长度是否满足
       if (modelConfig.contextWindow < inputLength * 4) return false;
-      
+
       // 检查能力是否匹配
       const canHandleTask = this.canModelHandleTask(modelConfig, taskTypes);
       if (!canHandleTask) return false;
-      
+
       return true;
     });
     
@@ -518,25 +524,28 @@ export class RoutingEngine {
   }
 
   // 查找免费替代方案（先过期优先）
-  private findFreeAlternative(targetModel: ModelConfig, inputLength: number): { 
-    provider: string; 
-    model: string; 
+  private findFreeAlternative(targetModel: ModelConfig, inputLength: number, excludedSet: Set<string> = new Set()): {
+    provider: string;
+    model: string;
     remaining: number;
     expiresAt: Date;
   } | null {
     const freeModels = this.quotaManager.getAvailableFreeTiers();
-    
+
     for (const freeModel of freeModels) {
       const modelConfig = this.modelMap.get(freeModel.model);
       if (!modelConfig) continue;
-      
+
+      // 排除已失败的模型
+      if (excludedSet.has(freeModel.model)) continue;
+
       // 检查能力是否匹配或接近
       const capabilitiesMatch = this.compareCapabilities(targetModel, modelConfig);
       if (!capabilitiesMatch) continue;
-      
+
       // 检查上下文长度
       if (modelConfig.contextWindow < inputLength * 4) continue;
-      
+
       return freeModel;
     }
     
@@ -665,26 +674,27 @@ export class RoutingEngine {
   }
 
   // 获取备选模型
-  private getFallbackModels(modelId: string): string[] {
+  private getFallbackModels(modelId: string, excludedSet: Set<string> = new Set()): string[] {
     const currentModel = this.modelMap.get(modelId);
     if (!currentModel) return [];
-    
+
     // 优先选择有免费额度的备选
     const freeModels = this.quotaManager.getAvailableFreeTiers();
     const freeFallbacks = freeModels
-      .filter(fm => fm.model !== modelId)
+      .filter(fm => fm.model !== modelId && !excludedSet.has(fm.model))
       .map(fm => fm.model);
-    
+
     // 选择同类型的其他付费模型
     const paidModels = this.config.models
-      .filter(m => 
-        m.id !== modelId && 
+      .filter(m =>
+        m.id !== modelId &&
         m.enabled &&
+        !excludedSet.has(m.id) &&
         !this.quotaManager.hasFreeTier(m.provider, m.id)
       )
       .sort((a, b) => a.priority - b.priority)
       .map(m => m.id);
-    
+
     return [...freeFallbacks, ...paidModels].slice(0, 3);
   }
 

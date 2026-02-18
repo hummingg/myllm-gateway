@@ -24,17 +24,17 @@ export const defaultConfig: GatewayConfig = {
     //   },
     //   models: ['gpt-4o', 'gpt-4o-mini', 'o1-mini']
     // },
-    {
-      name: 'anthropic',
-      apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || '',
-      baseUrl: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1',
-      enabled: !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
-      rateLimit: {
-        requestsPerMinute: 50,
-        tokensPerMinute: 100000
-      },
-      models: ['claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307', 'claude-sonnet-4-20250514']
-    },
+    // {
+    //   name: 'anthropic',
+    //   apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || '',
+    //   baseUrl: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1',
+    //   enabled: !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
+    //   rateLimit: {
+    //     requestsPerMinute: 50,
+    //     tokensPerMinute: 100000
+    //   },
+    //   models: ['claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307', 'claude-sonnet-4-20250514']
+    // },
     {
       name: 'moonshot',
       apiKey: process.env.MOONSHOT_API_KEY || '',
@@ -173,39 +173,39 @@ export const defaultConfig: GatewayConfig = {
     //   priority: 5,
     //   enabled: true
     // },
-    {
-      id: 'claude-3-5-sonnet-20241022',
-      name: 'Claude 3.5 Sonnet',
-      provider: 'anthropic',
-      contextWindow: 200000,
-      costPer1KInput: 0.003,
-      costPer1KOutput: 0.015,
-      capabilities: ['text', 'image', 'code'],
-      priority: 4,
-      enabled: true
-    },
-    {
-      id: 'claude-sonnet-4-20250514',
-      name: 'Claude Sonnet 4',
-      provider: 'anthropic',
-      contextWindow: 200000,
-      costPer1KInput: 0.003,
-      costPer1KOutput: 0.015,
-      capabilities: ['text', 'code', 'reasoning', 'long_context'],
-      priority: 4,
-      enabled: true
-    },
-    {
-      id: 'claude-3-haiku-20240307',
-      name: 'Claude 3 Haiku',
-      provider: 'anthropic',
-      contextWindow: 200000,
-      costPer1KInput: 0.00025,
-      costPer1KOutput: 0.00125,
-      capabilities: ['text', 'code'],
-      priority: 3,
-      enabled: true
-    },
+    // {
+    //   id: 'claude-3-5-sonnet-20241022',
+    //   name: 'Claude 3.5 Sonnet',
+    //   provider: 'anthropic',
+    //   contextWindow: 200000,
+    //   costPer1KInput: 0.003,
+    //   costPer1KOutput: 0.015,
+    //   capabilities: ['text', 'image', 'code'],
+    //   priority: 4,
+    //   enabled: true
+    // },
+    // {
+    //   id: 'claude-sonnet-4-20250514',
+    //   name: 'Claude Sonnet 4',
+    //   provider: 'anthropic',
+    //   contextWindow: 200000,
+    //   costPer1KInput: 0.003,
+    //   costPer1KOutput: 0.015,
+    //   capabilities: ['text', 'code', 'reasoning', 'long_context'],
+    //   priority: 4,
+    //   enabled: true
+    // },
+    // {
+    //   id: 'claude-3-haiku-20240307',
+    //   name: 'Claude 3 Haiku',
+    //   provider: 'anthropic',
+    //   contextWindow: 200000,
+    //   costPer1KInput: 0.00025,
+    //   costPer1KOutput: 0.00125,
+    //   capabilities: ['text', 'code'],
+    //   priority: 3,
+    //   enabled: true
+    // },
     {
       id: 'kimi-k2.5',
       name: 'Kimi K2.5',
@@ -577,7 +577,21 @@ export const defaultConfig: GatewayConfig = {
     monthlyBudget: 50,
     preferredProviders: ['groq', 'siliconflow', 'openai', 'anthropic', 'moonshot']
   },
-  
+
+  retry: {
+    maxAttempts: 3,
+    enableRerouting: true,
+    exponentialBackoff: true,
+    baseDelayMs: 1000,
+    maxDelayMs: 10000,
+    retryableErrors: [
+      'network_error',
+      'rate_limit',
+      'server_error',
+      'quota_exceeded'
+    ]
+  },
+
   monitoring: {
     enabled: true,
     logLevel: 'info',
