@@ -307,6 +307,127 @@ API密钥: dummy-key
 模型: auto
 ```
 
+### ClawdBot (OpenClaw)
+
+编辑 ClawdBot 配置文件（通常位于 `~/.openclaw/config.json`），添加 `myllm-gateway` 作为自定义供应商：
+
+**1. 添加认证 profile**
+
+```json
+"auth": {
+  "profiles": {
+    "myllm:default": {
+      "provider": "myllm",
+      "mode": "api_key"
+    }
+  }
+}
+```
+
+> 如果网关启用了 `GATEWAY_AUTH_TOKEN`，在 ClawdBot 的 API Key 设置中填入该 token；未启用则填任意值。
+
+**2. 添加供应商和模型**
+
+```json
+"models": {
+  "mode": "merge",
+  "providers": {
+    "myllm": {
+      "baseUrl": "http://localhost:3000/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "auto",
+          "name": "Auto (智能路由)",
+          "reasoning": false,
+          "input": ["text"],
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "contextWindow": 128000,
+          "maxTokens": 8192
+        },
+        {
+          "id": "deepseek-reasoner",
+          "name": "DeepSeek R1",
+          "reasoning": true,
+          "input": ["text"],
+          "cost": { "input": 0.00055, "output": 0.00219, "cacheRead": 0, "cacheWrite": 0 },
+          "contextWindow": 65536,
+          "maxTokens": 8192
+        },
+        {
+          "id": "deepseek-chat",
+          "name": "DeepSeek V3",
+          "reasoning": false,
+          "input": ["text"],
+          "cost": { "input": 0.00027, "output": 0.0011, "cacheRead": 0, "cacheWrite": 0 },
+          "contextWindow": 65536,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}
+```
+
+**3. 设置默认 Agent 使用网关**
+
+```json
+"agents": {
+  "defaults": {
+    "model": {
+      "primary": "myllm/auto"
+    },
+    "models": {
+      "myllm/auto": { "alias": "Gateway Auto" },
+      "myllm/deepseek-reasoner": { "alias": "DeepSeek R1" },
+      "myllm/deepseek-chat": { "alias": "DeepSeek V3" }
+    }
+  }
+}
+```
+
+完整配置示例（合并到现有 config.json）：
+
+```json
+{
+  "auth": {
+    "profiles": {
+      "myllm:default": {
+        "provider": "myllm",
+        "mode": "api_key"
+      }
+    }
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "myllm": {
+        "baseUrl": "http://localhost:3000/v1",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "auto",
+            "name": "Auto (智能路由)",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 128000,
+            "maxTokens": 8192
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "myllm/auto"
+      }
+    }
+  }
+}
+```
+
 ### LangChain
 
 ```python
