@@ -433,3 +433,14 @@ export class DeepSeekProvider extends OpenAIProvider {
     super(config, models);
   }
 }
+
+// Ollama 本地模型适配器（OpenAI 兼容，无需 API Key）
+export class OllamaProvider extends OpenAIProvider {
+  constructor(config: ProviderConfig, models: ModelConfig[]) {
+    super(config, models);
+  }
+
+  isEnabled(): boolean {
+    return this.config.enabled;
+  }
+}

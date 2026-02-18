@@ -313,6 +313,13 @@ export const defaultConfig: GatewayConfig = {
       baseUrl: 'https://api.deepseek.com/v1',
       enabled: !!process.env.DEEPSEEK_API_KEY,
       models: ['deepseek-chat', 'deepseek-reasoner']
+    },
+    {
+      name: 'ollama',
+      apiKey: 'ollama',
+      baseUrl: process.env.OLLAMA_HOST || 'http://localhost:11434/v1',
+      enabled: true,
+      models: ['qwen2.5:7b']
     }
   ],
   
@@ -2830,6 +2837,18 @@ export const defaultConfig: GatewayConfig = {
       costPer1KOutput: 0.00219,
       capabilities: ['text', 'code', 'reasoning'],
       priority: 3,
+      enabled: true
+    },
+    // Ollama 本地模型
+    {
+      id: 'qwen2.5:7b',
+      name: 'Qwen2.5 7B (Ollama)',
+      provider: 'ollama',
+      contextWindow: 32768,
+      costPer1KInput: 0,
+      costPer1KOutput: 0,
+      capabilities: ['text', 'code'],
+      priority: 1,
       enabled: true
     }
   ],

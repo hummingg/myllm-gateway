@@ -8,7 +8,7 @@ import { loadConfig } from './config/default.js';
 import { RoutingEngine } from './core/router.js';
 import { Monitor, RequestLog, FullRequestLog } from './core/monitor.js';
 import { QuotaManager } from './core/quota.js';
-import { BaseProvider, OpenAIProvider, AnthropicProvider, MoonshotProvider, GroqProvider, SiliconFlowProvider, AliyunProvider, MinimaxProvider, NvidiaProvider, IflowProvider, DeepSeekProvider, ChatCompletionRequest } from './providers/base.js';
+import { BaseProvider, OpenAIProvider, AnthropicProvider, MoonshotProvider, GroqProvider, SiliconFlowProvider, AliyunProvider, MinimaxProvider, NvidiaProvider, IflowProvider, DeepSeekProvider, OllamaProvider, ChatCompletionRequest } from './providers/base.js';
 import { GatewayConfig, ModelConfig, ProviderConfig, RetryConfig } from './types/config.js';
 import { RetryManager } from './core/retry.js';
 import { ErrorType } from './types/error.js';
@@ -103,6 +103,9 @@ class LLMGateway {
           break;
         case 'deepseek':
           provider = new DeepSeekProvider(providerConfig, models);
+          break;
+        case 'ollama':
+          provider = new OllamaProvider(providerConfig, models);
           break;
         default:
           console.log(`⚠️  未知供应商: ${providerConfig.name}`);
