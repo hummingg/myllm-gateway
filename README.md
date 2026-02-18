@@ -15,8 +15,9 @@
 - **🆓 免费额度优先**: 同场景能力下，自动优先使用有免费额度的模型
 - **🧠 智能路由**: 根据任务类型、输入长度、成本优先级自动选择最佳模型
 - **💰 成本优化**: 支持预算控制，自动选择性价比最高的模型
-- **🏢 多供应商**: 支持 OpenAI、Anthropic、Moonshot、Groq 等多个供应商
-- **🔄 降级策略**: 主模型失败时自动切换到备选模型
+- **🏢 多供应商**: 支持 Anthropic、Moonshot、SiliconFlow、Aliyun、MiniMax、NVIDIA 等多个供应商
+- **🔄 智能重试**: API 失败时自动重试，支持指数退避和智能重新路由
+- **🛡️ 故障转移**: 模型失败时自动切换到备选模型，排除已失败的模型
 - **📊 实时监控**: 请求统计、成本分析、性能监控
 - **📝 完整日志**: 记录每次请求的完整请求/响应体，方便调试和分析
 - **🔌 OpenAI 兼容**: 完全兼容 OpenAI API 格式，无缝迁移
@@ -120,9 +121,9 @@ curl http://localhost:3000/v1/chat/completions \
 ### 环境变量
 
 ```env
-# Anthropic (Claude)
-ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_BASE_URL=https://api.anthropic.com  # 可选
+# Anthropic (Claude) - 支持第三方代理
+ANTHROPIC_API_KEY=sk-ant-...  # 或 ANTHROPIC_AUTH_TOKEN
+ANTHROPIC_BASE_URL=https://api.anthropic.com  # 可选，支持第三方代理
 
 # Moonshot (月之暗面 Kimi)
 MOONSHOT_API_KEY=sk-...
@@ -132,6 +133,12 @@ SILICONFLOW_API_KEY=sk-...
 
 # Aliyun (阿里云百炼，18个免费模型)
 ALIYUN_API_KEY=sk-...
+
+# MiniMax (海螺AI)
+MINIMAX_API_KEY=sk-...
+
+# NVIDIA (GLM-5)
+NVIDIA_API_KEY=nvapi-...
 
 # 网关认证（可选）
 GATEWAY_AUTH_TOKEN=your-secure-token
@@ -318,11 +325,118 @@ curl http://localhost:3000/v1/models
 ```
 
 当前支持的模型：
-- **Anthropic**: claude-3-5-sonnet-20241022, claude-3-5-haiku-20241022, claude-3-opus-20240229
+- **Anthropic**: claude-3-5-haiku-20241022, claude-3-5-sonnet-20241022, claude-3-7-sonnet-20250219, claude-3-haiku-20240307, claude-3-opus-20240229, claude-haiku-4-5-20251001, claude-opus-4-1-20250805, claude-opus-4-20250514, claude-opus-4-5-20251101, claude-sonnet-4-20250514, claude-sonnet-4-5-20250929
 - **Moonshot**: moonshot-v1-8k, moonshot-v1-128k
-- **SiliconFlow**: Qwen2.5-7B-Instruct
+- **SiliconFlow**: Qwen/Qwen2.5-7B-Instruct
 - **Aliyun**: qwen3-max-2026-01-23, glm-4.7, qwen3-max-preview, 等18个模型
+- **MiniMax**: MiniMax-M2.5, MiniMax-M2
+- **NVIDIA**: z-ai/glm5
 - **特殊**: `auto` (智能路由)
+
+## 🔄 智能重试与故障转移 ⭐ NEW
+
+网关内置智能重试机制，在 API 调用失败时自动重试并智能选择备选模型，大幅提升服务可靠性。
+
+### 核心特性
+
+1. **智能重新路由**: 每次失败后重新执行路由决策，自动排除已失败的模型
+2. **错误分类**: 区分可重试错误（网络超时、速率限制）和不可重试错误（认证失败、参数错误）
+3. **指数退避**: 重试间隔递增（1s, 2s, 4s...），避免频繁请求导致速率限制
+4. **避免重复**: 自动记录失败模型，不会重复选择已失败的模型
+
+### 可重试错误类型
+
+- `network_error` - 网络超时、连接失败
+- `rate_limit` - 速率限制（HTTP 429）
+- `server_error` - 服务器错误（HTTP 5xx）
+- `quota_exceeded` - 额度不足
+
+### 不可重试错误类型
+
+- `auth_error` - 认证失败（HTTP 401, 403）
+- `invalid_request` - 请求参数错误（HTTP 400）
+- `model_not_found` - 模型不存在
+- `content_filter` - 内容过滤
+
+### 重试流程示例
+
+```
+尝试 1: aliyun/qwen3-max-2026-01-23
+  ↓ 失败 (server_error)
+分类错误 → 可重试
+  ↓
+记录到 excludedModels
+  ↓
+重新路由（排除 qwen3-max-2026-01-23）
+  ↓
+延迟 1s
+  ↓
+尝试 2: siliconflow/Qwen/Qwen2.5-7B-Instruct
+  ↓ 成功
+返回响应
+```
+
+### 配置选项
+
+在 `src/config/default.ts` 中配置重试参数：
+
+```typescript
+retry: {
+  maxAttempts: 3,              // 最大重试次数
+  enableRerouting: true,       // 启用智能重新路由
+  exponentialBackoff: true,    // 启用指数退避
+  baseDelayMs: 1000,          // 基础延迟（毫秒）
+  maxDelayMs: 10000,          // 最大延迟（毫秒）
+  retryableErrors: [          // 可重试的错误类型
+    'network_error',
+    'rate_limit',
+    'server_error',
+    'quota_exceeded'
+  ]
+}
+```
+
+### 错误响应格式
+
+当所有重试都失败时，返回详细的错误信息：
+
+```json
+{
+  "error": {
+    "message": "所有模型均失败",
+    "type": "server_error",
+    "attempts": 3,
+    "errors": [
+      {
+        "provider": "aliyun",
+        "model": "qwen3-max-2026-01-23",
+        "type": "server_error",
+        "message": "500 服务器错误"
+      },
+      {
+        "provider": "siliconflow",
+        "model": "Qwen/Qwen2.5-7B-Instruct",
+        "type": "network_error",
+        "message": "连接超时"
+      }
+    ]
+  }
+}
+```
+
+### 日志输出示例
+
+```
+[abc123] 初始路由: qwen3-max-2026-01-23 (场景: code) 🆓
+[重试管理器] 尝试 1/3: aliyun/qwen3-max-2026-01-23
+[重试管理器] ❌ 失败 (1/3): server_error - 服务器错误: 500
+[重试管理器] 🔄 重新路由决策，排除模型: qwen3-max-2026-01-23
+[路由] 场景: code, 排除: [qwen3-max-2026-01-23]
+[路由] 选择: Qwen/Qwen2.5-7B-Instruct (免费额度优先)
+[重试管理器] ⏳ 等待 1000ms 后重试...
+[重试管理器] 尝试 2/3: siliconflow/Qwen/Qwen2.5-7B-Instruct
+[重试管理器] ✅ 成功: siliconflow/Qwen/Qwen2.5-7B-Instruct
+```
 
 ## 📊 监控端点
 
@@ -455,6 +569,11 @@ User Request
 Free Tier Check (免费额度检查)
     ↓
 Router Engine (智能路由)
+    ↓
+Retry Manager (重试管理器) ⭐ NEW
+    ├─ Error Classification (错误分类)
+    ├─ Smart Rerouting (智能重新路由)
+    └─ Exponential Backoff (指数退避)
     ↓
 Provider Adapter (供应商适配)
     ↓
@@ -624,11 +743,13 @@ freeTierModels: [
 
 ## 🙏 致谢
 
-感谢所有AI提供商提供的免费额度：
-- [Anthropic](https://www.anthropic.com/) - Claude系列模型
+感谢所有AI提供商提供的免费额度和优质服务：
+- [Anthropic](https://www.anthropic.com/) - Claude系列模型（支持第三方代理）
 - [Moonshot AI](https://www.moonshot.cn/) - Kimi系列模型
 - [SiliconFlow](https://siliconflow.cn/) - 开源模型托管
 - [阿里云百炼](https://www.aliyun.com/product/bailian) - 18个免费模型
+- [MiniMax](https://www.minimaxi.com/) - 海螺AI模型
+- [NVIDIA](https://www.nvidia.com/) - GLM-5模型
 
 ---
 
