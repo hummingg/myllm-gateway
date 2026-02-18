@@ -24,17 +24,29 @@ export const defaultConfig: GatewayConfig = {
     //   },
     //   models: ['gpt-4o', 'gpt-4o-mini', 'o1-mini']
     // },
-    // {
-    //   name: 'anthropic',
-    //   apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || '',
-    //   baseUrl: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1',
-    //   enabled: !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
-    //   rateLimit: {
-    //     requestsPerMinute: 50,
-    //     tokensPerMinute: 100000
-    //   },
-    //   models: ['claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307', 'claude-sonnet-4-20250514']
-    // },
+    {
+      name: 'anthropic',
+      apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || '',
+      baseUrl: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com',
+      enabled: !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
+      rateLimit: {
+        requestsPerMinute: 50,
+        tokensPerMinute: 100000
+      },
+      models: [
+        'claude-3-5-haiku-20241022',
+        'claude-3-5-sonnet-20241022',
+        'claude-3-7-sonnet-20250219',
+        'claude-3-haiku-20240307',
+        'claude-3-opus-20240229',
+        'claude-haiku-4-5-20251001',
+        'claude-opus-4-1-20250805',
+        'claude-opus-4-20250514',
+        'claude-opus-4-5-20251101',
+        'claude-sonnet-4-20250514',
+        'claude-sonnet-4-5-20250929'
+      ]
+    },
     {
       name: 'moonshot',
       apiKey: process.env.MOONSHOT_API_KEY || '',
@@ -54,7 +66,7 @@ export const defaultConfig: GatewayConfig = {
       apiKey: process.env.SILICONFLOW_API_KEY || '',
       baseUrl: 'https://api.siliconflow.cn/v1',
       enabled: !!process.env.SILICONFLOW_API_KEY,
-      models: ['Qwen2.5-7B-Instruct']
+      models: ['Qwen/Qwen2.5-7B-Instruct']
     },
     {
       name: 'aliyun',
@@ -129,7 +141,7 @@ export const defaultConfig: GatewayConfig = {
     //   enabled: true
     // },
     {
-      id: 'Qwen2.5-7B-Instruct',
+      id: 'Qwen/Qwen2.5-7B-Instruct',
       name: 'Qwen2.5 7B (SiliconFlow)',
       provider: 'siliconflow',
       contextWindow: 128000,
@@ -173,39 +185,127 @@ export const defaultConfig: GatewayConfig = {
     //   priority: 5,
     //   enabled: true
     // },
-    // {
-    //   id: 'claude-3-5-sonnet-20241022',
-    //   name: 'Claude 3.5 Sonnet',
-    //   provider: 'anthropic',
-    //   contextWindow: 200000,
-    //   costPer1KInput: 0.003,
-    //   costPer1KOutput: 0.015,
-    //   capabilities: ['text', 'image', 'code'],
-    //   priority: 4,
-    //   enabled: true
-    // },
-    // {
-    //   id: 'claude-sonnet-4-20250514',
-    //   name: 'Claude Sonnet 4',
-    //   provider: 'anthropic',
-    //   contextWindow: 200000,
-    //   costPer1KInput: 0.003,
-    //   costPer1KOutput: 0.015,
-    //   capabilities: ['text', 'code', 'reasoning', 'long_context'],
-    //   priority: 4,
-    //   enabled: true
-    // },
-    // {
-    //   id: 'claude-3-haiku-20240307',
-    //   name: 'Claude 3 Haiku',
-    //   provider: 'anthropic',
-    //   contextWindow: 200000,
-    //   costPer1KInput: 0.00025,
-    //   costPer1KOutput: 0.00125,
-    //   capabilities: ['text', 'code'],
-    //   priority: 3,
-    //   enabled: true
-    // },
+    {
+      id: 'claude-3-5-haiku-20241022',
+      name: 'Claude 3.5 Haiku',
+      provider: 'anthropic',
+      contextWindow: 200000,
+      costPer1KInput: 0.001,
+      costPer1KOutput: 0.005,
+      capabilities: ['text', 'code'],
+      priority: 3,
+      enabled: true
+    },
+    {
+      id: 'claude-3-5-sonnet-20241022',
+      name: 'Claude 3.5 Sonnet',
+      provider: 'anthropic',
+      contextWindow: 200000,
+      costPer1KInput: 0.003,
+      costPer1KOutput: 0.015,
+      capabilities: ['text', 'image', 'code'],
+      priority: 4,
+      enabled: true
+    },
+    {
+      id: 'claude-3-7-sonnet-20250219',
+      name: 'Claude 3.7 Sonnet',
+      provider: 'anthropic',
+      contextWindow: 200000,
+      costPer1KInput: 0.003,
+      costPer1KOutput: 0.015,
+      capabilities: ['text', 'image', 'code', 'reasoning'],
+      priority: 5,
+      enabled: true
+    },
+    {
+      id: 'claude-3-haiku-20240307',
+      name: 'Claude 3 Haiku',
+      provider: 'anthropic',
+      contextWindow: 200000,
+      costPer1KInput: 0.00025,
+      costPer1KOutput: 0.00125,
+      capabilities: ['text', 'code'],
+      priority: 3,
+      enabled: true
+    },
+    {
+      id: 'claude-3-opus-20240229',
+      name: 'Claude 3 Opus',
+      provider: 'anthropic',
+      contextWindow: 200000,
+      costPer1KInput: 0.015,
+      costPer1KOutput: 0.075,
+      capabilities: ['text', 'image', 'code', 'reasoning'],
+      priority: 6,
+      enabled: true
+    },
+    {
+      id: 'claude-haiku-4-5-20251001',
+      name: 'Claude Haiku 4.5',
+      provider: 'anthropic',
+      contextWindow: 200000,
+      costPer1KInput: 0.001,
+      costPer1KOutput: 0.005,
+      capabilities: ['text', 'code'],
+      priority: 3,
+      enabled: true
+    },
+    {
+      id: 'claude-opus-4-1-20250805',
+      name: 'Claude Opus 4.1',
+      provider: 'anthropic',
+      contextWindow: 200000,
+      costPer1KInput: 0.015,
+      costPer1KOutput: 0.075,
+      capabilities: ['text', 'image', 'code', 'reasoning', 'long_context'],
+      priority: 7,
+      enabled: true
+    },
+    {
+      id: 'claude-opus-4-20250514',
+      name: 'Claude Opus 4',
+      provider: 'anthropic',
+      contextWindow: 200000,
+      costPer1KInput: 0.015,
+      costPer1KOutput: 0.075,
+      capabilities: ['text', 'image', 'code', 'reasoning', 'long_context'],
+      priority: 7,
+      enabled: true
+    },
+    {
+      id: 'claude-opus-4-5-20251101',
+      name: 'Claude Opus 4.5',
+      provider: 'anthropic',
+      contextWindow: 200000,
+      costPer1KInput: 0.015,
+      costPer1KOutput: 0.075,
+      capabilities: ['text', 'image', 'code', 'reasoning', 'long_context'],
+      priority: 8,
+      enabled: true
+    },
+    {
+      id: 'claude-sonnet-4-20250514',
+      name: 'Claude Sonnet 4',
+      provider: 'anthropic',
+      contextWindow: 200000,
+      costPer1KInput: 0.003,
+      costPer1KOutput: 0.015,
+      capabilities: ['text', 'code', 'reasoning', 'long_context'],
+      priority: 4,
+      enabled: true
+    },
+    {
+      id: 'claude-sonnet-4-5-20250929',
+      name: 'Claude Sonnet 4.5',
+      provider: 'anthropic',
+      contextWindow: 200000,
+      costPer1KInput: 0.003,
+      costPer1KOutput: 0.015,
+      capabilities: ['text', 'code', 'reasoning', 'long_context'],
+      priority: 5,
+      enabled: true
+    },
     {
       id: 'kimi-k2.5',
       name: 'Kimi K2.5',
@@ -524,21 +624,21 @@ export const defaultConfig: GatewayConfig = {
     {
       scenario: 'code',
       priorityType: 'speed_first',
-      modelRanking: ['groq/llama-3.1-8b-instant', 'groq/mixtral-8x7b-32768', 'siliconflow/Qwen2.5-7B-Instruct'],
+      modelRanking: ['groq/llama-3.1-8b-instant', 'groq/mixtral-8x7b-32768', 'siliconflow/Qwen/Qwen2.5-7B-Instruct'],
       freeTierWillingness: 0.9,
       description: '代码生成优先使用免费模型（省钱，Groq速度够快）'
     },
     {
       scenario: 'math',
       priorityType: 'capability_first',
-      modelRanking: ['groq/mixtral-8x7b-32768', 'siliconflow/Qwen2.5-7B-Instruct', 'groq/llama-3.1-8b-instant'],
+      modelRanking: ['groq/mixtral-8x7b-32768', 'siliconflow/Qwen/Qwen2.5-7B-Instruct', 'groq/llama-3.1-8b-instant'],
       freeTierWillingness: 0.8,
       description: '数学推理优先使用免费模型'
     },
     {
       scenario: 'long_context',
       priorityType: 'capability_first',
-      modelRanking: ['siliconflow/Qwen2.5-7B-Instruct', 'groq/mixtral-8x7b-32768'],
+      modelRanking: ['siliconflow/Qwen/Qwen2.5-7B-Instruct', 'groq/mixtral-8x7b-32768'],
       freeTierWillingness: 0.7,
       description: '长文本优先使用免费模型（Qwen支持128K）'
     },

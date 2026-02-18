@@ -130,13 +130,16 @@ export class OpenAIProvider extends BaseProvider {
 
 // Anthropic 适配器
 export class AnthropicProvider extends BaseProvider {
-  private client: Anthropic;
+  private baseUrl: string;
+  private apiKey: string;
 
   constructor(config: ProviderConfig, models: ModelConfig[]) {
     super(config, models);
-    this.client = new Anthropic({
-      apiKey: config.apiKey
-    });
+    this.baseUrl = config.baseUrl || 'https://api.anthropic.com';
+    this.apiKey = config.apiKey;
+    console.log(`[Anthropic] 初始化 - baseUrl: ${this.baseUrl}`);
+    console.log(`[Anthropic] 初始化 - apiKey (前10位): ${this.apiKey.substring(0, 10)}...`);
+    console.log(`[Anthropic] 初始化 - apiKey 长度: ${this.apiKey.length}`);
   }
 
   async chatCompletion(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
@@ -148,24 +151,46 @@ export class AnthropicProvider extends BaseProvider {
         content: m.content
       }));
 
-    const response = await this.client.messages.create({
-      model: request.model,
-      messages: conversationMessages,
-      system: systemMessage?.content,
-      max_tokens: request.maxTokens || 4096,
-      temperature: request.temperature
+    const url = `${this.baseUrl}/v1/messages`;
+    console.log(`[Anthropic] 请求 URL: ${url}`);
+    console.log(`[Anthropic] API Key (前10位): ${this.apiKey.substring(0, 10)}...`);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: request.model,
+        messages: conversationMessages,
+        system: systemMessage?.content,
+        max_tokens: request.maxTokens || 4096,
+        temperature: request.temperature
+      })
     });
 
+    console.log(`[Anthropic] 响应状态: ${response.status}`);
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.log(`[Anthropic] 错误响应: ${error}`);
+      throw new Error(`${response.status} ${error || response.statusText}`);
+    }
+
+    const data: any = await response.json();
+
     return {
-      id: response.id,
-      model: response.model,
-      content: response.content[0]?.type === 'text' ? response.content[0].text : '',
+      id: data.id,
+      model: data.model,
+      content: data.content[0]?.type === 'text' ? data.content[0].text : '',
       usage: {
-        promptTokens: response.usage.input_tokens,
-        completionTokens: response.usage.output_tokens,
-        totalTokens: response.usage.input_tokens + response.usage.output_tokens
+        promptTokens: data.usage.input_tokens,
+        completionTokens: data.usage.output_tokens,
+        totalTokens: data.usage.input_tokens + data.usage.output_tokens
       },
-      finishReason: response.stop_reason || 'stop'
+      finishReason: data.stop_reason || 'stop'
     };
   }
 
@@ -181,37 +206,69 @@ export class AnthropicProvider extends BaseProvider {
         content: m.content
       }));
 
-    const stream = await this.client.messages.create({
-      model: request.model,
-      messages: conversationMessages,
-      system: systemMessage?.content,
-      max_tokens: request.maxTokens || 4096,
-      temperature: request.temperature,
-      stream: true
+    const response = await fetch(`${this.baseUrl}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: request.model,
+        messages: conversationMessages,
+        system: systemMessage?.content,
+        max_tokens: request.maxTokens || 4096,
+        temperature: request.temperature,
+        stream: true
+      })
     });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`${response.status} ${error || response.statusText}`);
+    }
 
     let fullContent = '';
     let inputTokens = 0;
     let outputTokens = 0;
 
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta') {
-        const text = chunk.delta.type === 'text_delta' ? chunk.delta.text : '';
-        if (text) {
-          fullContent += text;
-          onChunk(text);
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n').filter(line => line.trim().startsWith('data:'));
+
+        for (const line of lines) {
+          const data = line.replace(/^data: /, '');
+          if (data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.type === 'content_block_delta') {
+              const text = parsed.delta?.text || '';
+              if (text) {
+                fullContent += text;
+                onChunk(text);
+              }
+            } else if (parsed.type === 'message_start') {
+              inputTokens = parsed.message?.usage?.input_tokens || 0;
+            } else if (parsed.type === 'message_delta') {
+              outputTokens = parsed.usage?.output_tokens || 0;
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
         }
-      }
-      if (chunk.type === 'message_start') {
-        inputTokens = chunk.message.usage.input_tokens;
-      }
-      if (chunk.type === 'message_delta') {
-        outputTokens = chunk.usage.output_tokens;
       }
     }
 
     return {
-      id: '',
+      id: crypto.randomUUID(),
       model: request.model,
       content: fullContent,
       usage: {
