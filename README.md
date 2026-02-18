@@ -20,6 +20,7 @@
 - **🛡️ 故障转移**: 模型失败时自动切换到备选模型，排除已失败的模型
 - **📊 实时监控**: 请求统计、成本分析、性能监控
 - **📝 完整日志**: 记录每次请求的完整请求/响应体，方便调试和分析
+- **🔒 PII 隐私保护**: 自动检测请求中的个人隐私信息，强制路由到本地 Ollama，防止隐私数据外泄
 - **🔌 OpenAI 兼容**: 完全兼容 OpenAI API 格式，无缝迁移
 
 ## 🚀 快速开始
@@ -148,6 +149,12 @@ DEEPSEEK_API_KEY=sk-...
 
 # 网关认证（可选）
 GATEWAY_AUTH_TOKEN=your-secure-token
+
+# Ollama 本地模型（PII 检测路由用）
+OLLAMA_HOST=http://localhost:11434/v1  # 默认值，可省略
+
+# PII 检测超时（毫秒，默认 3000）
+PII_DETECTION_TIMEOUT_MS=3000
 ```
 
 **注意**:
@@ -460,7 +467,46 @@ curl http://localhost:3000/v1/models
 - **NVIDIA**: z-ai/glm5
 - **iFlow**: Qwen3-Coder
 - **DeepSeek**: deepseek-chat (V3), deepseek-reasoner (R1)
+- **Ollama**: qwen2.5:7b（本地，PII 隐私保护专用）
 - **特殊**: `auto` (智能路由)
+
+## 🔒 PII 隐私检测与本地路由 ⭐ NEW
+
+当请求消息中包含个人隐私信息（PII）时，网关自动将请求路由到本地 Ollama，避免隐私数据发送到外部 API。
+
+### 检测的 PII 类型
+
+姓名、手机号、身份证号、家庭/工作地址、银行卡号、病历/诊断、邮箱、护照号、微信/支付宝账号
+
+### 工作原理
+
+1. 每次请求到达时，先用本地 `qwen2.5:7b` 对消息内容做分类（`max_tokens: 5`，极低延迟）
+2. 检测到 PII → 强制 `effectiveModel = 'qwen2.5:7b'`，整个请求走本地 Ollama
+3. Ollama 不可用或超时 → **fail-open**，请求继续走正常路由，不阻断服务
+4. PII 检测请求本身也通过网关路由，完整记录到日志
+
+### 前置条件
+
+本地需运行 Ollama 并拉取模型：
+
+```bash
+ollama pull qwen2.5:7b
+```
+
+### 日志示例
+
+```
+[abc123] PII detected (312ms), forcing ollama/qwen2.5:7b
+[abc123] 初始路由: qwen2.5:7b (用户指定) 💰
+```
+
+无 PII 时无额外日志输出；Ollama 不可用时：
+
+```
+[abc123] PII detection skipped (3001ms), using normal routing
+```
+
+---
 
 ## 🔄 智能重试与故障转移 ⭐ NEW
 
@@ -694,6 +740,10 @@ curl http://localhost:3000/report/month
 
 ```
 User Request
+    ↓
+PII Detector (隐私检测) ⭐ NEW
+    ├─ 含 PII → 强制路由到本地 Ollama（qwen2.5:7b）
+    └─ 无 PII / 超时 → 继续正常路由（fail-open）
     ↓
 Free Tier Check (免费额度检查)
     ↓

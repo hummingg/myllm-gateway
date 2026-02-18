@@ -12,6 +12,7 @@ import { BaseProvider, OpenAIProvider, AnthropicProvider, MoonshotProvider, Groq
 import { GatewayConfig, ModelConfig, ProviderConfig, RetryConfig } from './types/config.js';
 import { RetryManager } from './core/retry.js';
 import { ErrorType } from './types/error.js';
+import { PiiDetector } from './core/pii-detector.js';
 
 class LLMGateway {
   private app: express.Application;
@@ -21,6 +22,7 @@ class LLMGateway {
   private quotaManager: QuotaManager;
   private providers: Map<string, BaseProvider> = new Map();
   private retryManager: RetryManager;
+  private piiDetector: PiiDetector;
 
   constructor() {
     this.app = express();
@@ -50,6 +52,10 @@ class LLMGateway {
       ]
     };
     this.retryManager = new RetryManager(retryConfig, this.router, this.providers);
+
+    this.piiDetector = new PiiDetector(
+      process.env.OLLAMA_HOST || 'http://localhost:11434/v1'
+    );
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -295,9 +301,22 @@ class LLMGateway {
           return res.status(400).json({ error: 'Messages are required' });
         }
 
+        // PII 检测：如有隐私信息则强制路由到本地 Ollama
+        // X-Skip-PII-Detection 头用于 PiiDetector 自身的请求，避免无限递归
+        let effectiveModel = model;
+        if (!req.headers['x-skip-pii-detection']) {
+          const piiResult = await this.piiDetector.detect(messages);
+          if (piiResult.hasPii) {
+            console.log(`[${requestId}] PII detected (${piiResult.latencyMs}ms), forcing ollama/qwen2.5:7b`);
+            effectiveModel = 'qwen2.5:7b';
+          } else if (piiResult.skipped) {
+            console.warn(`[${requestId}] PII detection skipped (${piiResult.latencyMs}ms), using normal routing`);
+          }
+        }
+
         // 初始路由决策
         const initialDecision = this.router.decideModel(messages, {
-          preferredModel: model,
+          preferredModel: effectiveModel,
           priority: req.body.priority || this.config.user.defaultPriority,
           preferFreeTier: req.body.prefer_free_tier !== false
         });
@@ -334,7 +353,7 @@ class LLMGateway {
         };
 
         const userPreference = {
-          preferredModel: model,
+          preferredModel: effectiveModel,
           priority: req.body.priority || this.config.user.defaultPriority,
           preferFreeTier: req.body.prefer_free_tier !== false
         };
