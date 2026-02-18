@@ -15,7 +15,7 @@
 - **🆓 免费额度优先**: 同场景能力下，自动优先使用有免费额度的模型
 - **🧠 智能路由**: 根据任务类型、输入长度、成本优先级自动选择最佳模型
 - **💰 成本优化**: 支持预算控制，自动选择性价比最高的模型
-- **🏢 多供应商**: 支持 Anthropic、Moonshot、SiliconFlow、Aliyun、MiniMax、NVIDIA 等多个供应商
+- **🏢 多供应商**: 支持 Anthropic、Moonshot、SiliconFlow、Aliyun、MiniMax、NVIDIA、iFlow、DeepSeek 等多个供应商
 - **🔄 智能重试**: API 失败时自动重试，支持指数退避和智能重新路由
 - **🛡️ 故障转移**: 模型失败时自动切换到备选模型，排除已失败的模型
 - **📊 实时监控**: 请求统计、成本分析、性能监控
@@ -139,6 +139,12 @@ MINIMAX_API_KEY=sk-...
 
 # NVIDIA (GLM-5)
 NVIDIA_API_KEY=nvapi-...
+
+# iFlow
+IFLOW_API_KEY=sk-...
+
+# DeepSeek
+DEEPSEEK_API_KEY=sk-...
 
 # 网关认证（可选）
 GATEWAY_AUTH_TOKEN=your-secure-token
@@ -331,6 +337,8 @@ curl http://localhost:3000/v1/models
 - **Aliyun**: qwen3-max-2026-01-23, glm-4.7, qwen3-max-preview, 等18个模型
 - **MiniMax**: MiniMax-M2.5, MiniMax-M2
 - **NVIDIA**: z-ai/glm5
+- **iFlow**: Qwen3-Coder
+- **DeepSeek**: deepseek-chat (V3), deepseek-reasoner (R1)
 - **特殊**: `auto` (智能路由)
 
 ## 🔄 智能重试与故障转移 ⭐ NEW
@@ -699,6 +707,8 @@ freeTierModels: [
 |------|------------|------------|---------|------|
 | Groq Llama 3.1 | $0 | $0 | 1M/月 | 🆓 免费、快速 |
 | SiliconFlow Qwen | $0 | $0 | 500K/日 | 🆓 免费、中文好 |
+| DeepSeek V3 | $0.00027 | $0.0011 | - | 高性价比 |
+| DeepSeek R1 | $0.00055 | $0.00219 | - | 推理强 |
 | GPT-4o Mini | $0.00015 | $0.0006 | - | 最经济 |
 | Claude 3 Haiku | $0.00025 | $0.00125 | - | 快速 |
 | GPT-4o | $0.005 | $0.015 | - | 全能 |
@@ -750,6 +760,8 @@ freeTierModels: [
 - [阿里云百炼](https://www.aliyun.com/product/bailian) - 18个免费模型
 - [MiniMax](https://www.minimaxi.com/) - 海螺AI模型
 - [NVIDIA](https://www.nvidia.com/) - GLM-5模型
+- [iFlow](https://iflow.cn/) - Qwen3-Coder模型
+- [DeepSeek](https://www.deepseek.com/) - DeepSeek V3 / R1模型
 
 ---
 

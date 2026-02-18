@@ -113,6 +113,20 @@ export const defaultConfig: GatewayConfig = {
       baseUrl: 'https://integrate.api.nvidia.com/v1',
       enabled: !!process.env.NVIDIA_API_KEY,
       models: ['z-ai/glm5']
+    },
+    {
+      name: 'iflow',
+      apiKey: process.env.IFLOW_API_KEY || '',
+      baseUrl: 'https://apis.iflow.cn/v1',
+      enabled: !!process.env.IFLOW_API_KEY,
+      models: ['Qwen3-Coder']
+    },
+    {
+      name: 'deepseek',
+      apiKey: process.env.DEEPSEEK_API_KEY || '',
+      baseUrl: 'https://api.deepseek.com/v1',
+      enabled: !!process.env.DEEPSEEK_API_KEY,
+      models: ['deepseek-chat', 'deepseek-reasoner']
     }
   ],
   
@@ -571,6 +585,41 @@ export const defaultConfig: GatewayConfig = {
       costPer1KOutput: 0,
       capabilities: ['text', 'code', 'reasoning'],
       priority: 1,
+      enabled: true
+    },
+    // iFlow 模型
+    {
+      id: 'Qwen3-Coder',
+      name: 'Qwen3-Coder (iFlow)',
+      provider: 'iflow',
+      contextWindow: 131072,
+      costPer1KInput: 0,
+      costPer1KOutput: 0,
+      capabilities: ['text', 'code'],
+      priority: 2,
+      enabled: true
+    },
+    // DeepSeek 模型
+    {
+      id: 'deepseek-chat',
+      name: 'DeepSeek V3',
+      provider: 'deepseek',
+      contextWindow: 65536,
+      costPer1KInput: 0.00027,
+      costPer1KOutput: 0.0011,
+      capabilities: ['text', 'code'],
+      priority: 3,
+      enabled: true
+    },
+    {
+      id: 'deepseek-reasoner',
+      name: 'DeepSeek R1',
+      provider: 'deepseek',
+      contextWindow: 65536,
+      costPer1KInput: 0.00055,
+      costPer1KOutput: 0.00219,
+      capabilities: ['text', 'code', 'reasoning'],
+      priority: 3,
       enabled: true
     }
   ],

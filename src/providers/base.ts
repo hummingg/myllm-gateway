@@ -322,3 +322,114 @@ export class NvidiaProvider extends OpenAIProvider {
     super(config, models);
   }
 }
+
+// iFlow 适配器（OpenAI 兼容，带非标准错误格式处理）
+export class IflowProvider extends OpenAIProvider {
+  private baseUrl: string;
+  private apiKey: string;
+
+  constructor(config: ProviderConfig, models: ModelConfig[]) {
+    super(config, models);
+    this.baseUrl = config.baseUrl || 'https://apis.iflow.cn/v1';
+    this.apiKey = config.apiKey;
+  }
+
+  private async rawRequest(body: object): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`
+      },
+      body: JSON.stringify(body)
+    });
+    const data: any = await response.json();
+    // iflow 错误时返回 {status, msg, body} 而非标准 OpenAI 格式
+    if (data.status && !data.choices) {
+      throw new Error(`iflow error ${data.status}: ${data.msg}`);
+    }
+    return data;
+  }
+
+  async chatCompletion(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
+    const data = await this.rawRequest({
+      model: request.model,
+      messages: request.messages,
+      temperature: request.temperature,
+      max_tokens: request.maxTokens,
+      stream: false
+    });
+    const choice = data.choices[0];
+    return {
+      id: data.id,
+      model: data.model,
+      content: choice.message.content || '',
+      usage: {
+        promptTokens: data.usage?.prompt_tokens || 0,
+        completionTokens: data.usage?.completion_tokens || 0,
+        totalTokens: data.usage?.total_tokens || 0
+      },
+      finishReason: choice.finish_reason || 'stop'
+    };
+  }
+
+  async streamChatCompletion(
+    request: ChatCompletionRequest,
+    onChunk: (chunk: string) => void
+  ): Promise<ChatCompletionResponse> {
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`
+      },
+      body: JSON.stringify({
+        model: request.model,
+        messages: request.messages,
+        temperature: request.temperature,
+        max_tokens: request.maxTokens,
+        stream: true
+      })
+    });
+
+    const text = await response.text();
+    // 检查是否为非标准错误响应
+    try {
+      const maybeError = JSON.parse(text);
+      if (maybeError.status && !maybeError.choices) {
+        throw new Error(`iflow error ${maybeError.status}: ${maybeError.msg}`);
+      }
+    } catch (e: any) {
+      if (e.message.startsWith('iflow error')) throw e;
+    }
+
+    let fullContent = '';
+    const lines = text.split('\n');
+    for (const line of lines) {
+      if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+      try {
+        const chunk = JSON.parse(line.slice(6));
+        const content = chunk.choices?.[0]?.delta?.content || '';
+        if (content) {
+          fullContent += content;
+          onChunk(content);
+        }
+      } catch {}
+    }
+
+    return {
+      id: '',
+      model: request.model,
+      content: fullContent,
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      finishReason: 'stop'
+    };
+  }
+}
+
+// DeepSeek 适配器（OpenAI 兼容）
+export class DeepSeekProvider extends OpenAIProvider {
+  constructor(config: ProviderConfig, models: ModelConfig[]) {
+    super(config, models);
+  }
+}
