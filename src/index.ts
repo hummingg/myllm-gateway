@@ -6,7 +6,7 @@ import morgan from 'morgan';
 import crypto from 'crypto';
 import { loadConfig } from './config/default.js';
 import { RoutingEngine } from './core/router.js';
-import { Monitor, RequestLog } from './core/monitor.js';
+import { Monitor, RequestLog, FullRequestLog } from './core/monitor.js';
 import { QuotaManager } from './core/quota.js';
 import { BaseProvider, OpenAIProvider, AnthropicProvider, MoonshotProvider, GroqProvider, SiliconFlowProvider, AliyunProvider, MinimaxProvider, NvidiaProvider, ChatCompletionRequest } from './providers/base.js';
 import { GatewayConfig, ModelConfig, ProviderConfig } from './types/config.js';
@@ -217,6 +217,43 @@ class LLMGateway {
       res.send(report);
     });
 
+    // 查询完整请求日志 - 通过 requestId
+    this.app.get('/logs/:requestId', (req, res) => {
+      const { requestId } = req.params;
+      const { date } = req.query;
+
+      const log = this.monitor.getFullRequestLog(requestId, date as string);
+
+      if (!log) {
+        return res.status(404).json({ error: 'Request log not found' });
+      }
+
+      res.json(log);
+    });
+
+    // 查询某天的所有请求日志
+    this.app.get('/logs', (req, res) => {
+      const { date, limit } = req.query;
+
+      if (date) {
+        // 查询指定日期
+        const logs = this.monitor.getRequestLogsByDate(date as string);
+        res.json({
+          date,
+          total: logs.length,
+          logs
+        });
+      } else {
+        // 查询最近的请求
+        const limitNum = limit ? parseInt(limit as string) : 50;
+        const logs = this.monitor.getRecentRequestLogs(limitNum);
+        res.json({
+          total: logs.length,
+          logs
+        });
+      }
+    });
+
     // 聊天完成 - OpenAI 兼容接口
     this.app.post('/v1/chat/completions', async (req, res) => {
       const startTime = Date.now();
@@ -280,7 +317,7 @@ class LLMGateway {
           res.setHeader('Connection', 'keep-alive');
 
           let fullContent = '';
-          
+
           const response = await provider.streamChatCompletion(
             request,
             (chunk) => {
@@ -311,11 +348,17 @@ class LLMGateway {
           res.write('data: [DONE]\n\n');
           res.end();
 
-          this.logRequest(requestId, decision, response, startTime);
+          // 流式响应：使用累积的完整内容
+          const streamResponse = {
+            content: fullContent,
+            finishReason: response.finishReason,
+            usage: response.usage
+          };
+          this.logRequest(requestId, decision, streamResponse, startTime, req.body);
         } else {
           // 非流式响应
           const response = await provider.chatCompletion(request);
-          
+
           const result = {
             id: requestId,
             object: 'chat.completion',
@@ -337,7 +380,7 @@ class LLMGateway {
           };
 
           res.json(result);
-          this.logRequest(requestId, decision, response, startTime);
+          this.logRequest(requestId, decision, response, startTime, req.body);
         }
 
       } catch (error: any) {
@@ -378,8 +421,10 @@ class LLMGateway {
     requestId: string,
     decision: any,
     response: any,
-    startTime: number
+    startTime: number,
+    requestBody: any
   ): void {
+    // 基础日志（用于统计）
     const log: RequestLog = {
       id: requestId,
       timestamp: new Date(),
@@ -394,6 +439,36 @@ class LLMGateway {
     };
 
     this.monitor.logRequest(log);
+
+    // 完整日志（包含请求/响应体）
+    const fullLog: FullRequestLog = {
+      ...log,
+      request: {
+        messages: requestBody.messages,
+        model: requestBody.model || 'auto',
+        temperature: requestBody.temperature,
+        maxTokens: requestBody.max_tokens,
+        stream: requestBody.stream,
+        priority: requestBody.priority,
+        preferFreeTier: requestBody.prefer_free_tier
+      },
+      response: {
+        content: response.content || '',
+        finishReason: response.finishReason,
+        usage: response.usage
+      },
+      routing: {
+        requestedModel: requestBody.model || 'auto',
+        selectedModel: decision.model,
+        selectedProvider: decision.provider,
+        reason: decision.reason,
+        isFreeTier: decision.isFreeTier,
+        estimatedCost: decision.estimatedCost,
+        fallbackModels: decision.fallbackModels || []
+      }
+    };
+
+    this.monitor.saveFullRequestLog(fullLog);
   }
 
   start(): void {
@@ -426,7 +501,9 @@ class LLMGateway {
       console.log(`   • 聊天: POST http://${host}:${port}/v1/chat/completions`);
       console.log(`   • 模型: GET  http://${host}:${port}/v1/models`);
       console.log(`   • 额度: GET  http://${host}:${port}/quota`);
-      console.log(`   • 统计: GET  http://${host}:${port}/stats\n`);
+      console.log(`   • 统计: GET  http://${host}:${port}/stats`);
+      console.log(`   • 日志: GET  http://${host}:${port}/logs/:requestId`);
+      console.log(`   • 日志: GET  http://${host}:${port}/logs?date=YYYY-MM-DD\n`);
     });
   }
 }

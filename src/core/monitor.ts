@@ -1,6 +1,8 @@
 import winston from 'winston';
+import fs from 'fs';
+import path from 'path';
 
-// 请求记录
+// 请求记录（基础信息，用于统计）
 export interface RequestLog {
   id: string;
   timestamp: Date;
@@ -14,6 +16,36 @@ export interface RequestLog {
   routingReason: string;
   userAgent?: string;
   error?: string;
+}
+
+// 完整请求日志（包含请求/响应体）
+export interface FullRequestLog extends RequestLog {
+  request: {
+    messages: any[];
+    model: string;
+    temperature?: number;
+    maxTokens?: number;
+    stream?: boolean;
+    [key: string]: any;
+  };
+  response: {
+    content: string;
+    finishReason?: string;
+    usage?: {
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    };
+  };
+  routing: {
+    requestedModel: string;
+    selectedModel: string;
+    selectedProvider: string;
+    reason: string;
+    isFreeTier: boolean;
+    estimatedCost: number;
+    fallbackModels: string[];
+  };
 }
 
 // 使用统计
@@ -31,10 +63,17 @@ export class Monitor {
   private logger: winston.Logger;
   private requests: RequestLog[] = [];
   private maxRetention: number;
+  private logsDir: string;
 
-  constructor(logLevel: string = 'info', retentionDays: number = 30) {
+  constructor(logLevel: string = 'info', retentionDays: number = 30, logsDir: string = './logs/requests') {
     this.maxRetention = retentionDays * 24 * 60 * 60 * 1000;
-    
+    this.logsDir = logsDir;
+
+    // 确保日志目录存在
+    if (!fs.existsSync(this.logsDir)) {
+      fs.mkdirSync(this.logsDir, { recursive: true });
+    }
+
     this.logger = winston.createLogger({
       level: logLevel,
       format: winston.format.combine(
@@ -57,7 +96,7 @@ export class Monitor {
   logRequest(log: RequestLog): void {
     this.requests.push(log);
     this.cleanupOldLogs();
-    
+
     this.logger.info('Request completed', {
       id: log.id,
       model: log.model,
@@ -66,6 +105,145 @@ export class Monitor {
       latency: `${log.latency}ms`,
       status: log.status
     });
+  }
+
+  // 保存完整请求日志到文件
+  saveFullRequestLog(log: FullRequestLog): void {
+    try {
+      // 按日期组织目录：logs/requests/YYYY-MM-DD/
+      const date = new Date(log.timestamp);
+      const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+      const dayDir = path.join(this.logsDir, dateStr);
+
+      // 确保日期目录存在
+      if (!fs.existsSync(dayDir)) {
+        fs.mkdirSync(dayDir, { recursive: true });
+      }
+
+      // 生成时间前缀：时_分_秒_毫秒
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      const seconds = date.getSeconds().toString().padStart(2, '0');
+      const milliseconds = date.getMilliseconds().toString().padStart(3, '0');
+      const timePrefix = `${hours}_${minutes}_${seconds}_${milliseconds}`;
+
+      // 保存完整日志：时_分_秒_毫秒_requestId.json
+      const logFile = path.join(dayDir, `${timePrefix}_${log.id}.json`);
+      fs.writeFileSync(logFile, JSON.stringify(log, null, 2), 'utf-8');
+
+      this.logger.debug(`Full request log saved: ${logFile}`);
+    } catch (error: any) {
+      this.logger.error('Failed to save full request log', {
+        requestId: log.id,
+        error: error.message
+      });
+    }
+  }
+
+  // 获取完整请求日志
+  getFullRequestLog(requestId: string, date?: string): FullRequestLog | null {
+    try {
+      // 如果提供了日期，直接查找
+      if (date) {
+        const dayDir = path.join(this.logsDir, date);
+        if (fs.existsSync(dayDir)) {
+          // 查找匹配的文件：*_requestId.json
+          const files = fs.readdirSync(dayDir);
+          const matchedFile = files.find(f => f.endsWith(`_${requestId}.json`));
+          if (matchedFile) {
+            const content = fs.readFileSync(path.join(dayDir, matchedFile), 'utf-8');
+            return JSON.parse(content);
+          }
+        }
+        return null;
+      }
+
+      // 否则遍历最近的目录查找
+      const dirs = fs.readdirSync(this.logsDir)
+        .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
+        .sort()
+        .reverse()
+        .slice(0, 7); // 只查找最近7天
+
+      for (const dir of dirs) {
+        const dayDir = path.join(this.logsDir, dir);
+        const files = fs.readdirSync(dayDir);
+        const matchedFile = files.find(f => f.endsWith(`_${requestId}.json`));
+        if (matchedFile) {
+          const content = fs.readFileSync(path.join(dayDir, matchedFile), 'utf-8');
+          return JSON.parse(content);
+        }
+      }
+
+      return null;
+    } catch (error: any) {
+      this.logger.error('Failed to read full request log', {
+        requestId,
+        error: error.message
+      });
+      return null;
+    }
+  }
+
+  // 获取某天的所有请求日志
+  getRequestLogsByDate(date: string): FullRequestLog[] {
+    try {
+      const dayDir = path.join(this.logsDir, date);
+      if (!fs.existsSync(dayDir)) {
+        return [];
+      }
+
+      const files = fs.readdirSync(dayDir)
+        .filter(f => f.endsWith('.json'))
+        .sort()
+        .reverse(); // 最新的在前
+
+      const logs: FullRequestLog[] = [];
+      for (const file of files) {
+        try {
+          const content = fs.readFileSync(path.join(dayDir, file), 'utf-8');
+          logs.push(JSON.parse(content));
+        } catch (error) {
+          // 跳过损坏的文件
+          continue;
+        }
+      }
+
+      return logs;
+    } catch (error: any) {
+      this.logger.error('Failed to read request logs by date', {
+        date,
+        error: error.message
+      });
+      return [];
+    }
+  }
+
+  // 获取最近的请求日志
+  getRecentRequestLogs(limit: number = 50): FullRequestLog[] {
+    try {
+      const dirs = fs.readdirSync(this.logsDir)
+        .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
+        .sort()
+        .reverse()
+        .slice(0, 7); // 最近7天
+
+      const logs: FullRequestLog[] = [];
+
+      for (const dir of dirs) {
+        if (logs.length >= limit) break;
+
+        const dayLogs = this.getRequestLogsByDate(dir);
+        logs.push(...dayLogs.slice(0, limit - logs.length));
+      }
+
+      return logs;
+    } catch (error: any) {
+      this.logger.error('Failed to read recent request logs', {
+        error: error.message
+      });
+      return [];
+    }
   }
 
   // 记录错误

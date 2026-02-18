@@ -18,6 +18,7 @@
 - **🏢 多供应商**: 支持 OpenAI、Anthropic、Moonshot、Groq 等多个供应商
 - **🔄 降级策略**: 主模型失败时自动切换到备选模型
 - **📊 实时监控**: 请求统计、成本分析、性能监控
+- **📝 完整日志**: 记录每次请求的完整请求/响应体，方便调试和分析
 - **🔌 OpenAI 兼容**: 完全兼容 OpenAI API 格式，无缝迁移
 
 ## 🚀 快速开始
@@ -346,6 +347,29 @@ curl http://localhost:3000/stats
   }
 }
 ```
+
+### 查看完整请求日志 ⭐ NEW
+
+查询单个请求的完整日志（包含请求/响应体）：
+
+```bash
+# 通过 requestId 查询
+curl http://localhost:3000/logs/550e8400-e29b-41d4-a716-446655440000
+
+# 查询某天的所有日志
+curl http://localhost:3000/logs?date=2024-02-18
+
+# 查询最近的日志
+curl http://localhost:3000/logs?limit=50
+```
+
+完整日志包含：
+- 完整的请求体（messages、参数）
+- 完整的响应体（content、usage）
+- 路由决策信息（为什么选择这个模型）
+- 性能指标（延迟、tokens、成本）
+
+详细使用说明请查看 [FULL_REQUEST_LOGS.md](./FULL_REQUEST_LOGS.md)
 
 ### 查看额度状态
 
