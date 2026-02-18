@@ -307,9 +307,9 @@ API密钥: dummy-key
 模型: auto
 ```
 
-### ClawdBot (OpenClaw)
+### OpenClaw (ClawdBot)
 
-编辑 ClawdBot 配置文件（通常位于 `~/.openclaw/config.json`），添加 `myllm-gateway` 作为自定义供应商：
+编辑 OpenClaw 配置文件（通常位于 `~/.openclaw/config.json`），添加 `myllm-gateway` 作为自定义供应商：
 
 **1. 添加认证 profile**
 
@@ -324,7 +324,7 @@ API密钥: dummy-key
 }
 ```
 
-> 如果网关启用了 `GATEWAY_AUTH_TOKEN`，在 ClawdBot 的 API Key 设置中填入该 token；未启用则填任意值。
+> 如果网关启用了 `GATEWAY_AUTH_TOKEN`，在 OpenClaw 的 API Key 设置中填入该 token；未启用则填任意值。
 
 **2. 添加供应商和模型**
 
