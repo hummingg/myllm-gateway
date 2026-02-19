@@ -738,24 +738,62 @@ export class RoutingEngine {
   // ==================== 关键词标签路由 ====================
 
   /**
-   * 检测消息中的关键词，返回匹配的路由配置
+   * 提取被中括号包围的内容
+   * 支持：【】, [], （）, ()
+   */
+  private extractBracketedContent(content: string): string[] {
+    const results: string[] = [];
+    
+    // 匹配 【内容】 [内容] （内容） (内容)
+    const bracketPatterns = [
+      /【([^】]+)】/g,  // 中文方括号
+      /\[([^\]]+)\]/g,  // 英文方括号
+      /（([^）]+)）/g,  // 中文圆括号
+      /\(([^\)]+)\)/g   // 英文圆括号
+    ];
+    
+    for (const pattern of bracketPatterns) {
+      let match;
+      while ((match = pattern.exec(content)) !== null) {
+        results.push(match[1].trim().toLowerCase());
+      }
+    }
+    
+    return results;
+  }
+
+  /**
+   * 检测消息中的关键词（只识别被中括号包围的关键词）
    */
   private detectKeywordTagRoute(messages: ChatMessage[]): { keywords: string[]; tags: string[]; priority: number } | null {
     const keywordRoutes = this.config.keywordTagRoutes || [];
     if (keywordRoutes.length === 0) return null;
 
     // 合并所有消息内容
-    const content = messages.map(m => m.content.toLowerCase()).join(' ');
+    const content = messages.map(m => m.content).join(' ');
+    
+    // 提取被中括号包围的内容
+    const bracketedContents = this.extractBracketedContent(content);
+    if (bracketedContents.length === 0) return null;
 
     // 按优先级排序（高优先级在前）
     const sortedRoutes = [...keywordRoutes].sort((a, b) => b.priority - a.priority);
 
     for (const route of sortedRoutes) {
-      // 检查是否匹配任意关键词
-      const matchedKeywords = route.keywords.filter(kw => content.includes(kw.toLowerCase()));
+      // 检查被括号包围的内容是否匹配任意关键词
+      const matchedKeywords: string[] = [];
+      
+      for (const bracketed of bracketedContents) {
+        for (const kw of route.keywords) {
+          if (bracketed === kw.toLowerCase() || bracketed.includes(kw.toLowerCase())) {
+            matchedKeywords.push(kw);
+          }
+        }
+      }
+      
       if (matchedKeywords.length > 0) {
         return {
-          keywords: matchedKeywords,
+          keywords: [...new Set(matchedKeywords)], // 去重
           tags: route.tags,
           priority: route.priority
         };
