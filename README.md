@@ -14,6 +14,8 @@
 
 - **🆓 免费额度优先**: 同场景能力下，自动优先使用有免费额度的模型
 - **🧠 智能路由**: 根据任务类型、输入长度、成本优先级自动选择最佳模型
+- **🏷️ 关键词标签路由**: 通过【关键词】指定模型标签，如【谷歌】【国内部署】
+- **💾 语义缓存**: 基于 Ollama 本地 Embedding 的相似请求缓存，节省费用
 - **💰 成本优化**: 支持预算控制，自动选择性价比最高的模型
 - **🏢 多供应商**: 支持 Anthropic、Moonshot、SiliconFlow、Aliyun、MiniMax、NVIDIA、iFlow、DeepSeek 等多个供应商
 - **🔄 智能重试**: API 失败时自动重试，支持指数退避和智能重新路由
@@ -762,6 +764,134 @@ Quota Update (额度更新)
     ↓
 Response + Metrics
 ```
+
+## 🏷️ 关键词标签路由
+
+通过【关键词】语法，显式指定使用特定标签的模型。支持中英文方括号和圆括号：
+
+### 使用方法
+
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "messages": [
+      {"role": "user", "content": "【谷歌】请帮我搜索最新动态"}
+    ]
+  }'
+```
+
+### 支持的关键词
+
+| 类别 | 关键词示例 | 路由标签 |
+|------|-----------|---------|
+| **国外服务** | 【谷歌】【YouTube】【推特】【telegram】【GitHub】【ChatGPT】【Claude】 | 国外部署 |
+| **国内服务** | 【百度】【微博】【抖音】【微信】【知乎】 | 国内部署 |
+| **部署类型** | 【国外部署】【国内部署】【海外】 | 对应标签 |
+| **性能需求** | 【高速】【快速】 | 高速 |
+| **任务类型** | 【代码】【编程】 | code |
+
+### 支持的括号格式
+
+- `【谷歌】` - 中文方括号
+- `[YouTube]` - 英文方括号  
+- `（国内部署）` - 中文圆括号
+- `(国外部署)` - 英文圆括号
+
+### 配置自定义关键词
+
+在 `src/config/default.ts` 中配置：
+
+```typescript
+keywordTagRoutes: [
+  {
+    keywords: ['谷歌', 'Google', 'YouTube', 'github', 'ChatGPT'],
+    tags: ['国外部署'],
+    priority: 100
+  },
+  {
+    keywords: ['百度', '微博', '抖音'],
+    tags: ['国内部署'], 
+    priority: 100
+  }
+]
+```
+
+给模型添加标签：
+
+```typescript
+{
+  id: 'claude-3-5-sonnet-20241022',
+  provider: 'anthropic',
+  tags: ['国外部署']  // 添加标签
+}
+```
+
+---
+
+## 💾 语义缓存
+
+基于 Ollama 本地 Embedding 的相似请求缓存系统，自动识别语义相似的请求并返回缓存结果，大幅节省 API 费用。
+
+### 工作原理
+
+```
+用户请求 → 生成 Embedding → 相似度匹配 → 缓存命中？
+   ↓                                          ↓ 是
+调用 LLM API ← 缓存响应 ← 存储到缓存        直接返回（0-200ms）
+```
+
+### 启用缓存
+
+```bash
+# .env
+SEMANTIC_CACHE_ENABLED=true
+SEMANTIC_CACHE_THRESHOLD=0.95  # 相似度阈值
+SEMANTIC_CACHE_MAX_ENTRIES=1000  # 最大缓存数
+SEMANTIC_CACHE_TTL_MS=3600000  # 缓存有效期（1小时）
+```
+
+### 缓存匹配策略
+
+1. **精确匹配**（0ms）：请求内容完全一致
+2. **语义匹配**（~200ms）：基于 Ollama Embedding 的余弦相似度
+
+### 示例
+
+```bash
+# 第一次请求（调用 API）
+curl http://localhost:3000/v1/chat/completions \
+  -d '{"messages": [{"role": "user", "content": "什么是机器学习"}]}'
+
+# 相似请求（命中缓存，返回 cached: true）
+curl http://localhost:3000/v1/chat/completions \
+  -d '{"messages": [{"role": "user", "content": "机器学习是什么"}]}'
+# 响应包含："cached": true, "cache_similarity": 0.98
+```
+
+### 缓存管理 API
+
+```bash
+# 查看缓存统计
+curl http://localhost:3000/cache/stats
+
+# 清空缓存
+curl -X POST http://localhost:3000/cache/clear
+```
+
+### 缓存规则
+
+✅ **会缓存：**
+- 非流式请求（stream: false）
+- 非 PII 检测强制路由的请求
+- 成功响应
+
+❌ **不会缓存：**
+- 流式请求
+- 包含敏感信息的请求
+
+---
 
 ## 🎯 免费额度路由策略
 
