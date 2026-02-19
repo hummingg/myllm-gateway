@@ -13,6 +13,7 @@ import { GatewayConfig, ModelConfig, ProviderConfig, RetryConfig } from './types
 import { RetryManager } from './core/retry.js';
 import { ErrorType } from './types/error.js';
 import { PiiDetector } from './core/pii-detector.js';
+import { SemanticCache } from './core/semantic-cache.js';
 
 class LLMGateway {
   private app: express.Application;
@@ -23,6 +24,7 @@ class LLMGateway {
   private providers: Map<string, BaseProvider> = new Map();
   private retryManager: RetryManager;
   private piiDetector: PiiDetector;
+  private semanticCache: SemanticCache;
 
   constructor() {
     this.app = express();
@@ -57,6 +59,18 @@ class LLMGateway {
       process.env.OLLAMA_HOST || 'http://localhost:11434/v1',
       process.env.PII_DETECTION_ENABLED === 'true'
     );
+
+    // 初始化语义缓存
+    this.semanticCache = new SemanticCache({
+      enabled: process.env.SEMANTIC_CACHE_ENABLED === 'true',
+      similarityThreshold: parseFloat(process.env.SEMANTIC_CACHE_THRESHOLD || '0.95'),
+      maxEntries: parseInt(process.env.SEMANTIC_CACHE_MAX_ENTRIES || '1000'),
+      ttlMs: parseInt(process.env.SEMANTIC_CACHE_TTL_MS || '3600000'),
+      dataDir: process.env.SEMANTIC_CACHE_DIR || './data/cache',
+      embeddingModel: process.env.SEMANTIC_CACHE_EMBEDDING_MODEL || 'text-embedding-3-small',
+      embeddingBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+      embeddingApiKey: process.env.OPENAI_API_KEY || ''
+    });
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -302,14 +316,70 @@ class LLMGateway {
           return res.status(400).json({ error: 'Messages are required' });
         }
 
+        // 检查语义缓存（仅非流式请求）
+        let cacheHit = false;
+        let cacheSimilarity: number | undefined;
+        if (!stream && process.env.SEMANTIC_CACHE_ENABLED === 'true') {
+          const cacheResult = await this.semanticCache.get(messages, model);
+          if (cacheResult.hit && cacheResult.entry) {
+            cacheHit = true;
+            cacheSimilarity = cacheResult.similarity;
+            const cached = cacheResult.entry;
+            const latency = Date.now() - startTime;
+
+            console.log(`[${requestId}] Cache hit! (similarity: ${(cacheSimilarity! * 100).toFixed(1)}%, ${latency}ms)`);
+
+            // 返回缓存的响应
+            res.json({
+              id: requestId,
+              object: 'chat.completion',
+              created: Math.floor(Date.now() / 1000),
+              model: cached.response.model,
+              choices: [{
+                index: 0,
+                message: {
+                  role: 'assistant',
+                  content: cached.response.content
+                },
+                finish_reason: 'stop'
+              }],
+              usage: cached.response.usage || {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0
+              },
+              cached: true,
+              cache_similarity: cacheSimilarity
+            });
+
+            // 记录日志
+            this.logRequest(requestId, {
+              model: cached.response.model,
+              provider: 'cache',
+              reason: `semantic cache hit (${(cacheSimilarity! * 100).toFixed(1)}% similar)`,
+              estimatedCost: 0,
+              fallbackModels: [],
+              isFreeTier: true
+            }, {
+              content: cached.response.content,
+              finishReason: 'stop',
+              usage: cached.response.usage || { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+            }, startTime, req.body);
+
+            return;
+          }
+        }
+
         // PII 检测：如有隐私信息则强制路由到本地 Ollama
         // X-Skip-PII-Detection 头用于 PiiDetector 自身的请求，避免无限递归
         let effectiveModel = model;
+        let hasPiiForcedOllama = false;
         if (!req.headers['x-skip-pii-detection']) {
           const piiResult = await this.piiDetector.detect(messages);
           if (piiResult.hasPii) {
             console.log(`[${requestId}] PII detected (${piiResult.latencyMs}ms), forcing ollama/qwen2.5:7b`);
             effectiveModel = 'qwen2.5:7b';
+            hasPiiForcedOllama = true;
           } else if (piiResult.skipped) {
             console.warn(`[${requestId}] PII detection skipped (${piiResult.latencyMs}ms), using normal routing`);
           }
@@ -502,6 +572,19 @@ class LLMGateway {
 
           res.json(resultJson);
           this.logRequest(requestId, result.decision, response, startTime, req.body);
+
+          // 存入语义缓存（非流式、非 PII 强制路由、缓存未命中的情况）
+          if (!cacheHit && !hasPiiForcedOllama && process.env.SEMANTIC_CACHE_ENABLED === 'true') {
+            this.semanticCache.set(messages, model, {
+              content: response.content,
+              model: result.decision.model,
+              usage: {
+                promptTokens: response.usage.promptTokens,
+                completionTokens: response.usage.completionTokens,
+                totalTokens: response.usage.totalTokens
+              }
+            });
+          }
         }
 
       } catch (error: any) {
@@ -515,6 +598,17 @@ class LLMGateway {
           }
         });
       }
+    });
+
+    // 语义缓存统计
+    this.app.get('/cache/stats', (req, res) => {
+      res.json(this.semanticCache.getStats());
+    });
+
+    // 清空语义缓存
+    this.app.post('/cache/clear', async (req, res) => {
+      await this.semanticCache.clear();
+      res.json({ success: true, message: 'Cache cleared' });
     });
 
     // 404 处理
@@ -594,9 +688,28 @@ class LLMGateway {
 
   start(): void {
     const { port, host } = this.config.server;
+    
+    // 优雅关闭处理
+    const gracefulShutdown = async (signal: string) => {
+      console.log(`\n📤 收到 ${signal} 信号，正在优雅关闭...`);
+      
+      // 保存语义缓存
+      if (process.env.SEMANTIC_CACHE_ENABLED === 'true') {
+        console.log('💾 正在保存语义缓存...');
+        await this.semanticCache.flush();
+      }
+      
+      console.log('✅ 服务已安全关闭');
+      process.exit(0);
+    };
+
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    
     this.app.listen(port, host, () => {
       const quotaStatus = this.router.getQuotaStatus();
       const availableFree = quotaStatus.filter(q => q.remaining > 0);
+      const cacheStats = this.semanticCache.getStats();
       
       console.log(`
 ╔══════════════════════════════════════════════════════════╗
@@ -606,6 +719,7 @@ class LLMGateway {
 ║  模型: ${this.router.getAvailableModels().length} 个可用                                 ║
 ║  供应商: ${Array.from(this.providers.keys()).join(', ') || '无'}                        ║
 ║  免费额度模型: ${availableFree.length} 个                              ║
+${cacheStats.enabled ? `║  语义缓存: ${cacheStats.totalEntries} 条历史记录                    ║` : '║  语义缓存: 已禁用                                        ║'}
 ╚══════════════════════════════════════════════════════════╝
       `);
       
@@ -624,7 +738,12 @@ class LLMGateway {
       console.log(`   • 额度: GET  http://${host}:${port}/quota`);
       console.log(`   • 统计: GET  http://${host}:${port}/stats`);
       console.log(`   • 日志: GET  http://${host}:${port}/logs/:requestId`);
-      console.log(`   • 日志: GET  http://${host}:${port}/logs?date=YYYY-MM-DD\n`);
+      console.log(`   • 日志: GET  http://${host}:${port}/logs?date=YYYY-MM-DD`);
+      if (cacheStats.enabled) {
+        console.log(`   • 缓存统计: GET  http://${host}:${port}/cache/stats`);
+        console.log(`   • 清空缓存: POST http://${host}:${port}/cache/clear`);
+      }
+      console.log();
     });
   }
 }
