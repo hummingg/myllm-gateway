@@ -1,3 +1,4 @@
+const PII_DETECTION_ENABLED = process.env.PII_DETECTION_ENABLED === 'true';
 const PII_DETECTION_TIMEOUT_MS = parseInt(process.env.PII_DETECTION_TIMEOUT_MS || '3000');
 const OLLAMA_MODEL = 'qwen2.5:7b';
 
@@ -12,12 +13,20 @@ export interface PiiResult {
 }
 
 export class PiiDetector {
-  constructor(private ollamaBaseUrl: string) {
+  private enabled: boolean;
+
+  constructor(private ollamaBaseUrl: string, enabled: boolean = PII_DETECTION_ENABLED) {
     this.ollamaBaseUrl = ollamaBaseUrl.replace(/\/$/, '');
+    this.enabled = enabled;
   }
 
   async detect(messages: Array<{ role: string; content: string }>): Promise<PiiResult> {
     const start = Date.now();
+
+    // 如果 PII 检测未启用，直接返回无 PII
+    if (!this.enabled) {
+      return { hasPii: false, skipped: true, latencyMs: 0 };
+    }
     const content = messages.map(m => m.content).join('\n').slice(0, 4000);
 
     try {

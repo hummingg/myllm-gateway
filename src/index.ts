@@ -54,7 +54,8 @@ class LLMGateway {
     this.retryManager = new RetryManager(retryConfig, this.router, this.providers);
 
     this.piiDetector = new PiiDetector(
-      process.env.OLLAMA_HOST || 'http://localhost:11434/v1'
+      process.env.OLLAMA_HOST || 'http://localhost:11434/v1',
+      process.env.PII_DETECTION_ENABLED === 'true'
     );
 
     this.setupMiddleware();
