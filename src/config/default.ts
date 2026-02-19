@@ -356,7 +356,8 @@ export const defaultConfig: GatewayConfig = {
       costPer1KOutput: 0,
       capabilities: ['text', 'long_context'],
       priority: 1,
-      enabled: true
+      enabled: true,
+      tags: ['国内部署', '高速']
     },
     // 付费模型
     // {
@@ -412,7 +413,8 @@ export const defaultConfig: GatewayConfig = {
       costPer1KOutput: 0.015,
       capabilities: ['text', 'image', 'code'],
       priority: 4,
-      enabled: true
+      enabled: true,
+      tags: ['国外部署']
     },
     {
       id: 'claude-3-7-sonnet-20250219',
@@ -522,7 +524,8 @@ export const defaultConfig: GatewayConfig = {
       costPer1KOutput: 0,
       capabilities: ['text', 'long_context', 'code', 'reasoning'],
       priority: 1,
-      enabled: true
+      enabled: true,
+      tags: ['国内部署']
     },
     {
       id: 'moonshot-v1-8k',
@@ -2947,6 +2950,34 @@ export const defaultConfig: GatewayConfig = {
       modelRanking: [],
       freeTierWillingness: 0.3,
       description: '通用对话优先使用付费模型（体验更好）'
+    }
+  ],
+
+  // 关键词标签路由配置
+  keywordTagRoutes: [
+    {
+      keywords: ['国外部署', '海外', '境外', '国际版', 'foreign', 'overseas'],
+      tags: ['国外部署'],
+      priority: 100,
+      description: '包含国外部署关键词，路由到海外服务器模型'
+    },
+    {
+      keywords: ['国内部署', '中国大陆', '境内', '国内版', 'domestic'],
+      tags: ['国内部署'],
+      priority: 100,
+      description: '包含国内部署关键词，路由到国内服务器模型'
+    },
+    {
+      keywords: ['高速', '快', '快速', '实时', 'fast', 'quick'],
+      tags: ['高速'],
+      priority: 90,
+      description: '需要高速响应，优先使用低延迟模型'
+    },
+    {
+      keywords: ['代码', '编程', 'programming', 'code', 'coding', 'debug'],
+      tags: ['code'],
+      priority: 80,
+      description: '代码相关任务，路由到擅长编程的模型'
     }
   ],
 

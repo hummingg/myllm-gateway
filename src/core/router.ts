@@ -292,10 +292,27 @@ export class RoutingEngine {
       }
     }
 
-    // 2. 计算输入长度
+    // 2. 计算输入长度（提前计算，供后续使用）
     const inputLength = messages.reduce((sum, m) => sum + m.content.length, 0);
+
+    // 3. 关键词标签路由检测
+    const keywordRoute = this.detectKeywordTagRoute(messages);
+    if (keywordRoute) {
+      const taggedModel = this.findBestModelByTags(keywordRoute.tags, inputLength, excludedSet);
+      if (taggedModel) {
+        const isFree = this.quotaManager.hasFreeTier(taggedModel.provider, taggedModel.id);
+        return {
+          model: taggedModel.id,
+          provider: taggedModel.provider,
+          reason: `关键词匹配: ${keywordRoute.keywords.join(', ')} → 标签: ${keywordRoute.tags.join(', ')}`,
+          estimatedCost: isFree ? 0 : this.estimateCost(messages, taggedModel),
+          fallbackModels: this.getFallbackModels(taggedModel.id, excludedSet),
+          isFreeTier: isFree
+        };
+      }
+    }
     
-    // 3. 识别任务类型
+    // 4. 识别任务类型
     const taskType = this.detectTaskType(messages);
     
     // 4. 获取场景配置（包含免费意愿度）
@@ -716,5 +733,67 @@ export class RoutingEngine {
   // 获取额度预警
   getLowQuotaAlerts(threshold?: number, expiryWarningHours?: number) {
     return this.quotaManager.getLowQuotaAlerts(threshold, expiryWarningHours);
+  }
+
+  // ==================== 关键词标签路由 ====================
+
+  /**
+   * 检测消息中的关键词，返回匹配的路由配置
+   */
+  private detectKeywordTagRoute(messages: ChatMessage[]): { keywords: string[]; tags: string[]; priority: number } | null {
+    const keywordRoutes = this.config.keywordTagRoutes || [];
+    if (keywordRoutes.length === 0) return null;
+
+    // 合并所有消息内容
+    const content = messages.map(m => m.content.toLowerCase()).join(' ');
+
+    // 按优先级排序（高优先级在前）
+    const sortedRoutes = [...keywordRoutes].sort((a, b) => b.priority - a.priority);
+
+    for (const route of sortedRoutes) {
+      // 检查是否匹配任意关键词
+      const matchedKeywords = route.keywords.filter(kw => content.includes(kw.toLowerCase()));
+      if (matchedKeywords.length > 0) {
+        return {
+          keywords: matchedKeywords,
+          tags: route.tags,
+          priority: route.priority
+        };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 根据标签查找最佳模型
+   */
+  private findBestModelByTags(
+    tags: string[],
+    inputLength: number,
+    excludedSet: Set<string> = new Set()
+  ): ModelConfig | null {
+    // 查找所有带有指定标签的模型
+    const taggedModels = this.config.models.filter(m => {
+      if (!m.enabled || excludedSet.has(m.id)) return false;
+      if (!m.tags || m.tags.length === 0) return false;
+
+      // 检查是否有交集（模型标签包含任意目标标签）
+      return tags.some(tag => m.tags!.includes(tag));
+    });
+
+    if (taggedModels.length === 0) return null;
+
+    // 优先返回有免费额度的模型
+    const freeTaggedModels = taggedModels.filter(m =>
+      this.quotaManager.hasFreeTier(m.provider, m.id)
+    );
+
+    const candidates = freeTaggedModels.length > 0 ? freeTaggedModels : taggedModels;
+
+    // 按优先级排序，返回第一个满足上下文长度的
+    return candidates
+      .sort((a, b) => a.priority - b.priority)
+      .find(m => m.contextWindow >= inputLength * 4) || null;
   }
 }

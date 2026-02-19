@@ -16,7 +16,8 @@ export const ModelSchema = z.object({
   costPer1KOutput: z.number(),
   capabilities: z.array(z.enum(['text', 'image', 'code', 'reasoning', 'long_context'])),
   priority: z.number().default(1),
-  enabled: z.boolean().default(true)
+  enabled: z.boolean().default(true),
+  tags: z.array(z.string()).optional() // 模型标签，如 ['国外部署', '国内部署', '高速']
 });
 
 // 供应商配置
@@ -51,6 +52,16 @@ export const ScenarioPrioritySchema = z.object({
   freeTierWillingness: z.number().min(0).max(1),
   description: z.string().optional()
 });
+
+// 关键词标签路由配置
+export const KeywordTagRouteSchema = z.object({
+  keywords: z.array(z.string()),      // 匹配的关键词列表
+  tags: z.array(z.string()),          // 目标模型标签
+  priority: z.number().default(100),  // 优先级，越高越优先
+  description: z.string().optional()  // 描述
+});
+
+export type KeywordTagRoute = z.infer<typeof KeywordTagRouteSchema>;
 
 // 用户偏好
 export const UserPreferenceSchema = z.object({
@@ -91,6 +102,7 @@ export const GatewayConfigSchema = z.object({
     cacheEnabled: z.boolean().default(true)
   }),
   scenarioPriorities: z.array(ScenarioPrioritySchema).optional(),
+  keywordTagRoutes: z.array(KeywordTagRouteSchema).optional(), // 关键词标签路由
   user: UserPreferenceSchema,
   retry: RetryConfigSchema.optional(),
   monitoring: z.object({
