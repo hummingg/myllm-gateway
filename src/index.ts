@@ -156,14 +156,38 @@ class LLMGateway {
   }
 
   private setupRoutes(): void {
+    // Web UI 静态文件服务
+    this.app.use('/webui', express.static('./webui'));
+    this.app.get('/', (req, res) => {
+      res.redirect('/webui/index.html');
+    });
+
     // 健康检查
     this.app.get('/health', (req, res) => {
       const quotaStatus = this.router.getQuotaStatus();
-      res.json({ 
+      res.json({
         status: 'ok',
         providers: Array.from(this.providers.keys()),
-        models: this.router.getAvailableModels().map(m => m.id),
-        freeTierModels: quotaStatus.filter(q => q.remaining > 0).length
+        models: this.router.getAvailableModels().map(m => ({
+          id: m.id,
+          name: m.name,
+          provider: m.provider,
+          contextWindow: m.contextWindow,
+          costPer1KInput: m.costPer1KInput,
+          costPer1KOutput: m.costPer1KOutput,
+          capabilities: m.capabilities,
+          tags: m.tags,
+          enabled: m.enabled
+        })),
+        freeTier: {
+          total: quotaStatus.length,
+          available: quotaStatus.filter(q => q.remaining > 0).length,
+          models: quotaStatus.filter(q => q.remaining > 0).map(q => ({
+            model: q.model,
+            remaining: q.remaining,
+            nextReset: q.nextReset
+          }))
+        }
       });
     });
 
@@ -730,6 +754,8 @@ ${cacheStats.enabled ? `║  语义缓存: ${cacheStats.totalEntries} 条历史�
         console.log();
       }
       
+      console.log('🌐 Web UI: http://' + host + ':' + port + '/');
+      console.log();
       console.log('📝 API 端点:');
       console.log(`   • 聊天: POST http://${host}:${port}/v1/chat/completions`);
       console.log(`   • 模型: GET  http://${host}:${port}/v1/models`);

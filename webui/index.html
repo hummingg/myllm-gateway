@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MyLLM Gateway - 管理面板</title>
+  <link rel="stylesheet" href="/webui/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="container">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <div class="logo">
+        <h1>🚀 MyLLM Gateway</h1>
+        <span class="version">v1.0.0</span>
+      </div>
+      <nav class="nav">
+        <a href="#dashboard" class="nav-item active" data-page="dashboard">
+          <span class="icon">📊</span> 仪表盘
+        </a>
+        <a href="#models" class="nav-item" data-page="models">
+          <span class="icon">🤖</span> 模型管理
+        </a>
+        <a href="#routing" class="nav-item" data-page="routing">
+          <span class="icon">🎯</span> 路由配置
+        </a>
+        <a href="#cache" class="nav-item" data-page="cache">
+          <span class="icon">💾</span> 缓存管理
+        </a>
+        <a href="#playground" class="nav-item" data-page="playground">
+          <span class="icon">🧪</span> 测试工具
+        </a>
+        <a href="#logs" class="nav-item" data-page="logs">
+          <span class="icon">📝</span> 日志查询
+        </a>
+        <a href="#settings" class="nav-item" data-page="settings">
+          <span class="icon">⚙️</span> 系统设置
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="status-indicator">
+          <span class="dot online"></span>
+          <span>服务正常</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="main">
+      <!-- 顶部栏 -->
+      <header class="header">
+        <h2 id="page-title">仪表盘</h2>
+        <div class="header-actions">
+          <button class="btn btn-secondary" onclick="refreshData()">
+            <span class="icon">🔄</span> 刷新
+          </button>
+        </div>
+      </header>
+
+      <!-- 页面内容 -->
+      <div class="content">
+        <!-- 仪表盘页面 -->
+        <div id="dashboard" class="page active">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon">📈</div>
+              <div class="stat-info">
+                <span class="stat-value" id="stat-requests">-</span>
+                <span class="stat-label">今日请求数</span>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">💰</div>
+              <div class="stat-info">
+                <span class="stat-value" id="stat-cost">-</span>
+                <span class="stat-label">今日成本</span>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">⚡</div>
+              <div class="stat-info">
+                <span class="stat-value" id="stat-latency">-</span>
+                <span class="stat-label">平均延迟</span>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">🎯</div>
+              <div class="stat-info">
+                <span class="stat-value" id="stat-cache">-</span>
+                <span class="stat-label">缓存命中率</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="charts-row">
+            <div class="chart-card">
+              <h3>请求趋势（24小时）</h3>
+              <canvas id="requestsChart"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>模型使用分布</h3>
+              <canvas id="modelsChart"></canvas>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>免费额度状态</h3>
+            <div class="quota-list" id="quota-list">
+              <!-- 动态加载 -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 模型管理页面 -->
+        <div id="models" class="page">
+          <div class="section-header">
+            <h3>模型列表</h3>
+            <button class="btn btn-primary" onclick="showAddModelModal()">
+              <span class="icon">➕</span> 添加模型
+            </button>
+          </div>
+          <div class="table-container">
+            <table class="data-table" id="models-table">
+              <thead>
+                <tr>
+                  <th>模型</th>
+                  <th>供应商</th>
+                  <th>标签</th>
+                  <th>上下文</th>
+                  <th>成本/1K</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- 动态加载 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 路由配置页面 -->
+        <div id="routing" class="page">
+          <div class="section-header">
+            <h3>关键词路由规则</h3>
+            <button class="btn btn-primary" onclick="showAddRouteModal()">
+              <span class="icon">➕</span> 添加规则
+            </button>
+          </div>
+          <div class="routes-list" id="routes-list">
+            <!-- 动态加载 -->
+          </div>
+
+          <div class="section">
+            <h3>场景优先级配置</h3>
+            <div class="scenario-config" id="scenario-config">
+              <!-- 动态加载 -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 缓存管理页面 -->
+        <div id="cache" class="page">
+          <div class="section-header">
+            <h3>语义缓存</h3>
+            <div>
+              <button class="btn btn-danger" onclick="clearCache()">
+                <span class="icon">🗑️</span> 清空缓存
+              </button>
+            </div>
+          </div>
+          <div class="cache-stats" id="cache-stats">
+            <!-- 动态加载 -->
+          </div>
+          <div class="section">
+            <h3>缓存条目</h3>
+            <div class="cache-entries" id="cache-entries">
+              <!-- 动态加载 -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 测试工具页面 -->
+        <div id="playground" class="page">
+          <div class="playground-container">
+            <div class="playground-input">
+              <div class="input-group">
+                <label>模型</label>
+                <select id="playground-model">
+                  <option value="auto">自动路由</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label>系统提示词（可选）</label>
+                <textarea id="playground-system" rows="2" placeholder="输入系统提示词..."></textarea>
+              </div>
+              <div class="input-group">
+                <label>用户消息</label>
+                <textarea id="playground-user" rows="4" placeholder="输入你的问题..."></textarea>
+              </div>
+              <div class="input-group">
+                <label>参数</label>
+                <div class="param-row">
+                  <span>Temperature: <input type="range" id="playground-temp" min="0" max="2" step="0.1" value="0.7"></span>
+                  <span>Max Tokens: <input type="number" id="playground-maxtokens" value="1000" min="1" max="4096"></span>
+                </div>
+              </div>
+              <button class="btn btn-primary btn-block" onclick="sendPlaygroundRequest()">
+                <span class="icon">▶️</span> 发送请求
+              </button>
+            </div>
+            <div class="playground-output">
+              <div class="output-header">
+                <h4>响应</h4>
+                <div class="output-meta" id="output-meta"></div>
+              </div>
+              <div class="output-content" id="output-content">
+                <div class="placeholder">点击"发送请求"查看结果</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 日志查询页面 -->
+        <div id="logs" class="page">
+          <div class="section-header">
+            <h3>请求日志</h3>
+            <div class="filter-group">
+              <input type="date" id="log-date" placeholder="选择日期">
+              <input type="text" id="log-search" placeholder="搜索模型、关键词...">
+              <button class="btn btn-secondary" onclick="searchLogs()">搜索</button>
+            </div>
+          </div>
+          <div class="logs-list" id="logs-list">
+            <!-- 动态加载 -->
+          </div>
+        </div>
+
+        <!-- 系统设置页面 -->
+        <div id="settings" class="page">
+          <div class="settings-section">
+            <h3>环境变量</h3>
+            <div class="env-list" id="env-list">
+              <!-- 动态加载 -->
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>系统信息</h3>
+            <div class="system-info" id="system-info">
+              <!-- 动态加载 -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/webui/app.js"></script>
+</body>
+</html>
