@@ -326,8 +326,9 @@ class LLMGateway {
             cacheSimilarity = cacheResult.similarity;
             const cached = cacheResult.entry;
             const latency = Date.now() - startTime;
+            const matchType = cacheResult.exactMatch ? 'exact' : 'semantic';
 
-            console.log(`[${requestId}] Cache hit! (similarity: ${(cacheSimilarity! * 100).toFixed(1)}%, ${latency}ms)`);
+            console.log(`[${requestId}] Cache hit! (${matchType}, similarity: ${(cacheSimilarity! * 100).toFixed(1)}%, ${latency}ms)`);
 
             // 返回缓存的响应
             res.json({

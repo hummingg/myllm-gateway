@@ -134,12 +134,32 @@ export class SemanticCache {
   }
 
   /**
+   * 获取精确匹配的缓存（无需 embedding）
+   */
+  private getExactMatch(
+    messages: Array<{ role: string; content: string }>,
+    model: string
+  ): CacheEntry | null {
+    const key = this.generateKey(messages);
+    const entry = this.cache.get(key);
+    
+    if (entry && entry.model === model) {
+      // 检查是否过期
+      if (Date.now() - entry.createdAt <= this.config.ttlMs) {
+        return entry;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
    * 获取缓存
    */
   async get(
     messages: Array<{ role: string; content: string }>,
     model: string
-  ): Promise<{ hit: boolean; entry?: CacheEntry; similarity?: number }> {
+  ): Promise<{ hit: boolean; entry?: CacheEntry; similarity?: number; exactMatch?: boolean }> {
     if (!this.config.enabled) {
       return { hit: false };
     }
@@ -148,25 +168,41 @@ export class SemanticCache {
       // 清理过期条目
       this.cleanupExpired();
 
-      // 获取查询的 embedding
-      const queryText = messages.map(m => m.content).join('\n');
-      const queryEmbedding = await this.getEmbedding(queryText);
-
-      // 查找最相似的条目
-      const match = this.findMostSimilar(queryEmbedding);
-
-      if (match) {
-        // 更新访问统计
-        match.entry.accessCount++;
-        match.entry.lastAccessedAt = Date.now();
+      // 首先尝试精确匹配（无需 embedding）
+      const exactMatch = this.getExactMatch(messages, model);
+      if (exactMatch) {
+        exactMatch.accessCount++;
+        exactMatch.lastAccessedAt = Date.now();
         this.dirty = true;
         this.scheduleSave();
-
+        
         return {
           hit: true,
-          entry: match.entry,
-          similarity: match.similarity
+          entry: exactMatch,
+          similarity: 1.0,
+          exactMatch: true
         };
+      }
+
+      // 尝试语义匹配（需要 embedding）
+      if (this.config.embeddingApiKey && this.config.embeddingApiKey !== 'sk-your-openai-key-here') {
+        const queryText = messages.map(m => m.content).join('\n');
+        const queryEmbedding = await this.getEmbedding(queryText);
+        const match = this.findMostSimilar(queryEmbedding);
+
+        if (match) {
+          match.entry.accessCount++;
+          match.entry.lastAccessedAt = Date.now();
+          this.dirty = true;
+          this.scheduleSave();
+
+          return {
+            hit: true,
+            entry: match.entry,
+            similarity: match.similarity,
+            exactMatch: false
+          };
+        }
       }
 
       return { hit: false };
@@ -187,26 +223,43 @@ export class SemanticCache {
     if (!this.config.enabled) return;
 
     try {
-      // 获取 embedding
-      const text = messages.map(m => m.content).join('\n');
-      const embedding = await this.getEmbedding(text);
-
-      // 检查是否已存在相似条目
-      const existing = this.findMostSimilar(embedding);
-      if (existing && existing.similarity > 0.98) {
-        // 太相似了，更新现有条目
-        existing.entry.response = response;
-        existing.entry.lastAccessedAt = Date.now();
+      const id = this.generateKey(messages);
+      
+      // 检查是否已存在精确匹配
+      const existing = this.cache.get(id);
+      if (existing) {
+        existing.response = response;
+        existing.lastAccessedAt = Date.now();
         this.dirty = true;
         this.scheduleSave();
         return;
       }
 
+      // 尝试获取 embedding（如果配置有效）
+      let embedding: number[] | undefined;
+      if (this.config.embeddingApiKey && this.config.embeddingApiKey !== 'sk-your-openai-key-here') {
+        try {
+          const text = messages.map(m => m.content).join('\n');
+          embedding = await this.getEmbedding(text);
+          
+          // 检查语义相似度
+          const similar = this.findMostSimilar(embedding);
+          if (similar && similar.similarity > 0.98) {
+            similar.entry.response = response;
+            similar.entry.lastAccessedAt = Date.now();
+            this.dirty = true;
+            this.scheduleSave();
+            return;
+          }
+        } catch (err) {
+          console.warn('[SemanticCache] Embedding failed, using exact match only');
+        }
+      }
+
       // 创建新条目
-      const id = this.generateKey(messages);
       const entry: CacheEntry = {
         id,
-        embedding,
+        embedding: embedding || [],
         messages: [...messages],
         model,
         response,
