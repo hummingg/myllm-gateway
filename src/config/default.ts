@@ -2956,16 +2956,16 @@ export const defaultConfig: GatewayConfig = {
   // 关键词标签路由配置
   keywordTagRoutes: [
     {
-      keywords: ['国外部署', '海外', '境外', '国际版', 'foreign', 'overseas'],
+      keywords: ['国外部署', '海外', '境外', '国际版', 'foreign', 'overseas', '谷歌', 'Google', '推特', 'Twitter', '油管', 'YouTube', 'youtube', 'telegram', 'Telegram', 'TG', 'tg', 'Facebook', 'facebook', 'fb', 'Instagram', 'instagram', 'ins', 'TikTok', 'tiktok', '抖音国际版', 'Netflix', 'netflix', '奈飞', 'ChatGPT', 'chatgpt', 'OpenAI', 'openai', 'Claude', 'claude', 'Anthropic', 'anthropic', 'Gemini', 'gemini', 'GitHub', 'github', '维基百科', 'Wikipedia', 'Reddit', 'reddit'],
       tags: ['国外部署'],
       priority: 100,
-      description: '包含国外部署关键词，路由到海外服务器模型'
+      description: '包含国外部署关键词或国外服务名称，路由到海外服务器模型'
     },
     {
-      keywords: ['国内部署', '中国大陆', '境内', '国内版', 'domestic'],
+      keywords: ['国内部署', '中国大陆', '境内', '国内版', 'domestic', '百度', 'Baidu', 'baidu', '微博', 'Weibo', 'weibo', '哔哩哔哩', 'Bilibili', 'bilibili', 'b站', 'B站', '抖音', 'douyin', '快手', 'kuaishou', '小红书', '知乎', '简书', 'CSDN', 'csdn', '网易云音乐', 'QQ音乐', '腾讯视频', '爱奇艺', '优酷', '淘宝', '天猫', '京东', '拼多多', '微信', 'wechat', 'WeChat'],
       tags: ['国内部署'],
       priority: 100,
-      description: '包含国内部署关键词，路由到国内服务器模型'
+      description: '包含国内部署关键词或国内服务名称，路由到国内服务器模型'
     },
     {
       keywords: ['高速', '快', '快速', '实时', 'fast', 'quick'],
