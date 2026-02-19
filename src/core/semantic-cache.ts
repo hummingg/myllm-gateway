@@ -23,9 +23,6 @@ export interface SemanticCacheConfig {
   maxEntries: number;           // 默认 1000
   ttlMs: number;                // 默认 1小时
   dataDir: string;              // 缓存文件目录
-  embeddingModel: string;       // 使用的 embedding 模型
-  embeddingBaseUrl: string;     // embedding API 地址
-  embeddingApiKey: string;      // API Key
 }
 
 export class SemanticCache {
@@ -41,42 +38,35 @@ export class SemanticCache {
       similarityThreshold: config.similarityThreshold ?? 0.95,
       maxEntries: config.maxEntries ?? 1000,
       ttlMs: config.ttlMs ?? 3600 * 1000, // 1小时
-      dataDir: config.dataDir ?? './data/cache',
-      embeddingModel: config.embeddingModel ?? 'text-embedding-3-small',
-      embeddingBaseUrl: config.embeddingBaseUrl ?? 'https://api.openai.com/v1',
-      embeddingApiKey: config.embeddingApiKey ?? ''
+      dataDir: config.dataDir ?? './data/cache'
     };
 
     this.dataFile = path.join(this.config.dataDir, 'semantic-cache.json');
-    
+
     if (this.config.enabled) {
       this.loadCache();
     }
   }
 
   /**
-   * 获取 embedding 向量
+   * 使用 Ollama 获取 embedding 向量
    */
   private async getEmbedding(text: string): Promise<number[]> {
-    const response = await fetch(`${this.config.embeddingBaseUrl}/embeddings`, {
+    const ollamaUrl = process.env.OLLAMA_HOST || 'http://localhost:11434';
+    const model = process.env.OLLAMA_EMBEDDING_MODEL || 'qwen2.5:7b';
+    
+    const response = await fetch(`${ollamaUrl}/api/embeddings`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.config.embeddingApiKey}`
-      },
-      body: JSON.stringify({
-        model: this.config.embeddingModel,
-        input: text,
-        encoding_format: 'float'
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, prompt: text })
     });
 
     if (!response.ok) {
-      throw new Error(`Embedding API error: ${response.status}`);
+      throw new Error(`Ollama embedding error: ${response.status}`);
     }
 
     const data = await response.json() as any;
-    return data.data[0].embedding;
+    return data.embedding;
   }
 
   /**
@@ -184,8 +174,8 @@ export class SemanticCache {
         };
       }
 
-      // 尝试语义匹配（需要 embedding）
-      if (this.config.embeddingApiKey && this.config.embeddingApiKey !== 'sk-your-openai-key-here') {
+      // 尝试语义匹配（使用 Ollama）
+      try {
         const queryText = messages.map(m => m.content).join('\n');
         const queryEmbedding = await this.getEmbedding(queryText);
         const match = this.findMostSimilar(queryEmbedding);
@@ -203,6 +193,8 @@ export class SemanticCache {
             exactMatch: false
           };
         }
+      } catch (err) {
+        console.warn('[SemanticCache] Semantic match failed:', err);
       }
 
       return { hit: false };
@@ -235,25 +227,23 @@ export class SemanticCache {
         return;
       }
 
-      // 尝试获取 embedding（如果配置有效）
+      // 尝试获取 embedding（使用 Ollama）
       let embedding: number[] | undefined;
-      if (this.config.embeddingApiKey && this.config.embeddingApiKey !== 'sk-your-openai-key-here') {
-        try {
-          const text = messages.map(m => m.content).join('\n');
-          embedding = await this.getEmbedding(text);
-          
-          // 检查语义相似度
-          const similar = this.findMostSimilar(embedding);
-          if (similar && similar.similarity > 0.98) {
-            similar.entry.response = response;
-            similar.entry.lastAccessedAt = Date.now();
-            this.dirty = true;
-            this.scheduleSave();
-            return;
-          }
-        } catch (err) {
-          console.warn('[SemanticCache] Embedding failed, using exact match only');
+      try {
+        const text = messages.map(m => m.content).join('\n');
+        embedding = await this.getEmbedding(text);
+
+        // 检查语义相似度
+        const similar = this.findMostSimilar(embedding);
+        if (similar && similar.similarity > 0.98) {
+          similar.entry.response = response;
+          similar.entry.lastAccessedAt = Date.now();
+          this.dirty = true;
+          this.scheduleSave();
+          return;
         }
+      } catch (err) {
+        console.warn('[SemanticCache] Ollama embedding failed, using exact match only:', err);
       }
 
       // 创建新条目

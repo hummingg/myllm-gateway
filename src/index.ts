@@ -60,16 +60,13 @@ class LLMGateway {
       process.env.PII_DETECTION_ENABLED === 'true'
     );
 
-    // 初始化语义缓存
+    // 初始化语义缓存（使用 Ollama 本地 embedding）
     this.semanticCache = new SemanticCache({
       enabled: process.env.SEMANTIC_CACHE_ENABLED === 'true',
       similarityThreshold: parseFloat(process.env.SEMANTIC_CACHE_THRESHOLD || '0.95'),
       maxEntries: parseInt(process.env.SEMANTIC_CACHE_MAX_ENTRIES || '1000'),
       ttlMs: parseInt(process.env.SEMANTIC_CACHE_TTL_MS || '3600000'),
-      dataDir: process.env.SEMANTIC_CACHE_DIR || './data/cache',
-      embeddingModel: process.env.SEMANTIC_CACHE_EMBEDDING_MODEL || 'text-embedding-3-small',
-      embeddingBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-      embeddingApiKey: process.env.OPENAI_API_KEY || ''
+      dataDir: process.env.SEMANTIC_CACHE_DIR || './data/cache'
     });
 
     this.setupMiddleware();
