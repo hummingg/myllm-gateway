@@ -363,6 +363,32 @@ API密钥: dummy-key
 
 > 如果网关启用了 `GATEWAY_AUTH_TOKEN`，在 OpenClaw 的 API Key 设置中填入该 token；未启用则填任意值。
 
+.openclaw/agents/main/agent/auth-profiles.json
+```json
+"profiles": {
+    "moonshot:default": {
+      "type": "api_key",
+      "provider": "moonshot",
+      "key": "sk-xxx"
+    },
+    "nvidia:default": {
+      "type": "api_key",
+      "provider": "nvidia",
+      "key": "nvapi-xxx"
+    },
+    "myllm:default": {
+      "type": "api_key",
+      "provider": "myllm",
+      "key": "myllm-xxx"
+    }
+  },
+  "lastGood": {
+    "moonshot": "moonshot:default",
+    "nvidia": "nvidia:default",
+    "myllm": "myllm:default"
+  }
+```
+
 **2. 添加供应商和模型**
 
 ```json
