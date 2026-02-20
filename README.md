@@ -248,7 +248,7 @@ LLM Gateway完全兼容OpenAI API格式，可以在任何支持OpenAI API的工�
 
 ### OpenClaw (ClawdBot)
 
-编辑 OpenClaw 配置文件（通常位于 `~/.openclaw/config.json`），添加 `myllm-gateway` 作为自定义供应商：
+编辑 OpenClaw 配置文件（通常位于 `~/.openclaw/openclaw.json`），添加 `myllm-gateway` 作为自定义供应商：
 
 **1. 添加认证 profile**
 
