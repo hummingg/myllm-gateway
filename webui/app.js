@@ -173,7 +173,7 @@ async function loadModels() {
         <td>${escapeHtml(m.provider)}</td>
         <td>${m.tags?.map(t => `<span class="tag tag-blue">${escapeHtml(t)}</span>`).join(' ') || '-'}</td>
         <td>${(m.contextWindow / 1000).toFixed(0)}K</td>
-        <td>$${m.costPer1KInput || 0}</td>
+        <td><small>$${m.costPer1KInput || 0}</small><br><small>$${m.costPer1KOutput || 0}</small></td>
         <td>
           <label class="switch">
             <input type="checkbox" ${m.enabled ? 'checked' : ''} data-model-id="${escapeHtml(m.id)}" data-action="toggle">
