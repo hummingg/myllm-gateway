@@ -246,104 +246,6 @@ curl http://localhost:3000/v1/chat/completions \
 
 LLM Gateway完全兼容OpenAI API格式，可以在任何支持OpenAI API的工具和SDK中使用。
 
-### Python SDK
-
-```python
-from openai import OpenAI
-
-# 配置客户端指向LLM Gateway
-client = OpenAI(
-    base_url="http://localhost:3000/v1",
-    api_key="dummy-key"  # 如果网关未启用认证，可以使用任意值
-)
-
-# 使用自动路由
-response = client.chat.completions.create(
-    model="auto",  # 让网关自动选择最佳模型
-    messages=[
-        {"role": "user", "content": "用Python写一个快速排序"}
-    ]
-)
-
-print(response.choices[0].message.content)
-
-# 指定具体模型
-response = client.chat.completions.create(
-    model="qwen3-max-2026-01-23",  # 使用阿里云模型
-    messages=[
-        {"role": "user", "content": "你好"}
-    ]
-)
-```
-
-### Node.js SDK
-
-```javascript
-import OpenAI from 'openai';
-
-const client = new OpenAI({
-    baseURL: 'http://localhost:3000/v1',
-    apiKey: 'dummy-key'
-});
-
-const response = await client.chat.completions.create({
-    model: 'auto',
-    messages: [
-        { role: 'user', content: '写一个JavaScript函数' }
-    ]
-});
-
-console.log(response.choices[0].message.content);
-```
-
-### Continue (VSCode/JetBrains插件)
-
-在Continue配置文件 `~/.continue/config.json` 中添加：
-
-```json
-{
-  "models": [
-    {
-      "title": "LLM Gateway",
-      "provider": "openai",
-      "model": "auto",
-      "apiBase": "http://localhost:3000/v1",
-      "apiKey": "dummy-key"
-    }
-  ]
-}
-```
-
-### Cursor
-
-在Cursor设置中配置自定义模型：
-
-1. 打开 Settings → Models
-2. 添加自定义OpenAI兼容端点：
-   - Base URL: `http://localhost:3000/v1`
-   - API Key: `dummy-key`
-   - Model: `auto` 或具体模型名
-
-### Open WebUI
-
-在Open WebUI中添加外部连接：
-
-1. 进入 Settings → Connections
-2. 添加OpenAI API：
-   - API Base URL: `http://localhost:3000/v1`
-   - API Key: `dummy-key`
-3. 选择模型时可以使用 `auto` 或具体模型名
-
-### ChatBox / NextChat
-
-配置API设置：
-
-```
-API地址: http://localhost:3000/v1
-API密钥: dummy-key
-模型: auto
-```
-
 ### OpenClaw (ClawdBot)
 
 编辑 OpenClaw 配置文件（通常位于 `~/.openclaw/config.json`），添加 `myllm-gateway` 作为自定义供应商：
@@ -490,6 +392,106 @@ API密钥: dummy-key
   }
 }
 ```
+
+### Python SDK
+
+```python
+from openai import OpenAI
+
+# 配置客户端指向LLM Gateway
+client = OpenAI(
+    base_url="http://localhost:3000/v1",
+    api_key="dummy-key"  # 如果网关未启用认证，可以使用任意值
+)
+
+# 使用自动路由
+response = client.chat.completions.create(
+    model="auto",  # 让网关自动选择最佳模型
+    messages=[
+        {"role": "user", "content": "用Python写一个快速排序"}
+    ]
+)
+
+print(response.choices[0].message.content)
+
+# 指定具体模型
+response = client.chat.completions.create(
+    model="qwen3-max-2026-01-23",  # 使用阿里云模型
+    messages=[
+        {"role": "user", "content": "你好"}
+    ]
+)
+```
+
+### Node.js SDK
+
+```javascript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+    baseURL: 'http://localhost:3000/v1',
+    apiKey: 'dummy-key'
+});
+
+const response = await client.chat.completions.create({
+    model: 'auto',
+    messages: [
+        { role: 'user', content: '写一个JavaScript函数' }
+    ]
+});
+
+console.log(response.choices[0].message.content);
+```
+
+### Continue (VSCode/JetBrains插件)
+
+在Continue配置文件 `~/.continue/config.json` 中添加：
+
+```json
+{
+  "models": [
+    {
+      "title": "LLM Gateway",
+      "provider": "openai",
+      "model": "auto",
+      "apiBase": "http://localhost:3000/v1",
+      "apiKey": "dummy-key"
+    }
+  ]
+}
+```
+
+### Cursor
+
+在Cursor设置中配置自定义模型：
+
+1. 打开 Settings → Models
+2. 添加自定义OpenAI兼容端点：
+   - Base URL: `http://localhost:3000/v1`
+   - API Key: `dummy-key`
+   - Model: `auto` 或具体模型名
+
+### Open WebUI
+
+在Open WebUI中添加外部连接：
+
+1. 进入 Settings → Connections
+2. 添加OpenAI API：
+   - API Base URL: `http://localhost:3000/v1`
+   - API Key: `dummy-key`
+3. 选择模型时可以使用 `auto` 或具体模型名
+
+### ChatBox / NextChat
+
+配置API设置：
+
+```
+API地址: http://localhost:3000/v1
+API密钥: dummy-key
+模型: auto
+```
+
+
 
 ### LangChain
 
