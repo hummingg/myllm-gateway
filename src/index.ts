@@ -331,7 +331,12 @@ class LLMGateway {
       const requestId = crypto.randomUUID();
 
       try {
-        const { messages, model, temperature, max_tokens, stream } = req.body;
+        const { messages, model: rawModel, temperature, max_tokens, stream } = req.body;
+
+        // 支持 "provider::model" 格式，兼容 OpenAI 规范
+        const separatorIdx = typeof rawModel === 'string' ? rawModel.indexOf('::') : -1;
+        const provider = separatorIdx !== -1 ? rawModel.slice(0, separatorIdx) : undefined;
+        const model = separatorIdx !== -1 ? rawModel.slice(separatorIdx + 2) : rawModel;
 
         if (!messages || !Array.isArray(messages)) {
           return res.status(400).json({ error: 'Messages are required' });
@@ -395,12 +400,14 @@ class LLMGateway {
         // PII 检测：如有隐私信息则强制路由到本地 Ollama
         // X-Skip-PII-Detection 头用于 PiiDetector 自身的请求，避免无限递归
         let effectiveModel = model;
+        let effectiveProvider = provider;
         let hasPiiForcedOllama = false;
         if (!req.headers['x-skip-pii-detection']) {
           const piiResult = await this.piiDetector.detect(messages);
           if (piiResult.hasPii) {
             console.log(`[${requestId}] PII detected (${piiResult.latencyMs}ms), forcing ollama/qwen2.5:7b`);
             effectiveModel = 'qwen2.5:7b';
+            effectiveProvider = undefined;  // PII 强制路由时忽略用户指定的 provider
             hasPiiForcedOllama = true;
           } else if (piiResult.skipped) {
             console.warn(`[${requestId}] PII detection skipped (${piiResult.latencyMs}ms), using normal routing`);
@@ -410,6 +417,7 @@ class LLMGateway {
         // 初始路由决策
         const initialDecision = this.router.decideModel(messages, {
           preferredModel: effectiveModel,
+          preferredProvider: effectiveProvider,
           priority: req.body.priority || this.config.user.defaultPriority,
           preferFreeTier: req.body.prefer_free_tier !== false
         });
@@ -447,6 +455,7 @@ class LLMGateway {
 
         const userPreference = {
           preferredModel: effectiveModel,
+          preferredProvider: effectiveProvider,
           priority: req.body.priority || this.config.user.defaultPriority,
           preferFreeTier: req.body.prefer_free_tier !== false
         };

@@ -272,13 +272,18 @@ export class RoutingEngine {
   // 主路由决策
   decideModel(
     messages: ChatMessage[],
-    userPreference?: { priority?: string; preferredModel?: string; preferFreeTier?: boolean },
+    userPreference?: { priority?: string; preferredModel?: string; preferredProvider?: string; preferFreeTier?: boolean },
     context?: { excludedModels?: string[]; attemptNumber?: number; previousError?: any }
   ): RoutingDecision {
     const excludedSet = new Set(context?.excludedModels || []);
     // 1. 如果用户明确指定了模型
     if (userPreference?.preferredModel && userPreference.preferredModel !== 'auto') {
-      const model = this.modelMap.get(userPreference.preferredModel);
+      // 若同时指定了 provider，则按 (provider, model) 组合查找
+      const model = userPreference.preferredProvider
+        ? this.config.models.find(
+            m => m.id === userPreference.preferredModel && m.provider === userPreference.preferredProvider
+          )
+        : this.modelMap.get(userPreference.preferredModel);
       if (model && model.enabled && !excludedSet.has(model.id)) {
         const isFree = this.quotaManager.hasFreeTier(model.provider, model.id);
         return {

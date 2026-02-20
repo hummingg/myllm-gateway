@@ -63,10 +63,10 @@ npm start
 当多个免费模型都可用时，网关会优先选择**先过期**的模型，避免浪费！
 
 **示例场景：**
-- Groq（月额度，3天后重置）：剩余 800K tokens
+- Aliyun qwen3-max（永不刷新）：剩余 900K tokens
 - SiliconFlow（日额度，8小时后重置）：剩余 300K tokens
 
-**路由决策：** 优先使用 SiliconFlow（8小时后过期），因为 Groq 还有 3 天时间可以用。
+**路由决策：** 优先使用 SiliconFlow（8小时后过期），因为 Aliyun 额度永不刷新，不急着用。
 
 ### 支持的免费模型
 
@@ -95,7 +95,7 @@ curl http://localhost:3000/v1/chat/completions \
     "messages": [{"role": "user", "content": "你好"}]
   }'
 ```
-网关会自动在代码生成场景优先使用免费的 Groq，长文本场景使用免费的 SiliconFlow。
+网关会自动在代码生成场景优先使用免费的 SiliconFlow，长文本场景使用免费的 Aliyun qwen3-max。
 
 **方式 2：强制免费模式**
 ```bash
@@ -140,7 +140,7 @@ ALIYUN_API_KEY=sk-...
 # MiniMax (海螺AI)
 MINIMAX_API_KEY=sk-...
 
-# NVIDIA (GLM-5)
+# NVIDIA (185+ 模型，含 moonshotai/kimi-k2.5、glm5 等)
 NVIDIA_API_KEY=nvapi-...
 
 # iFlow
@@ -171,9 +171,9 @@ PII_DETECTION_TIMEOUT_MS=3000
 | 场景 | 首选模型 | 免费替代 | 选择依据 |
 |------|---------|---------|---------|
 | 长文本 (>50K) | Kimi K2.5 | SiliconFlow Qwen | 256K 上下文 |
-| 代码生成 | Claude 3.5 Sonnet | Groq Llama 3.1 | 代码能力强 |
-| 数学推理 | o1-mini | Groq Llama 3.1 | 推理能力优秀 |
-| 经济模式 | GPT-4o Mini | Groq/SiliconFlow | 成本最低 |
+| 代码生成 | Claude 3.5 Sonnet | SiliconFlow Qwen | 代码能力强 |
+| 数学推理 | DeepSeek R1 | Aliyun qwen3-max | 推理能力优秀 |
+| 经济模式 | DeepSeek V3 | Aliyun qwen3-max | 成本最低 |
 
 ## 📡 API 使用
 
@@ -194,12 +194,39 @@ curl http://localhost:3000/v1/chat/completions \
 ```bash
 curl http://localhost:3000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-token" \ 
+  -H "Authorization: Bearer your-token" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
     "messages": [{"role": "user", "content": "写一段 Python 代码"}]
   }'
 ```
+
+### 指定供应商（provider::model 格式）
+
+当同一个模型在多个供应商都有提供时，可以用 `provider::model` 格式明确指定走哪个供应商，完全兼容 OpenAI API 规范：
+
+```bash
+# 走 NVIDIA 的 kimi-k2.5
+curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "nvidia::moonshotai/kimi-k2.5",
+    "messages": [{"role": "user", "content": "hi"}]
+  }'
+
+# 走 Moonshot 官方的 kimi-k2.5
+curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "moonshot::kimi-k2.5",
+    "messages": [{"role": "user", "content": "hi"}]
+  }'
+```
+
+格式规则：
+- `provider::model` — 指定供应商，`::` 前为供应商名，后为模型 ID
+- `model` — 不含 `::` 时走默认路由，由网关自动选择供应商
+- 若指定的 `provider` 不存在或不包含该模型，自动降级到正常路由
 
 ### 流式响应
 
@@ -462,11 +489,11 @@ curl http://localhost:3000/v1/models
 
 当前支持的模型：
 - **Anthropic**: claude-3-5-haiku-20241022, claude-3-5-sonnet-20241022, claude-3-7-sonnet-20250219, claude-3-haiku-20240307, claude-3-opus-20240229, claude-haiku-4-5-20251001, claude-opus-4-1-20250805, claude-opus-4-20250514, claude-opus-4-5-20251101, claude-sonnet-4-20250514, claude-sonnet-4-5-20250929
-- **Moonshot**: moonshot-v1-8k, moonshot-v1-128k
+- **Moonshot**: kimi-k2.5, moonshot-v1-8k, moonshot-v1-128k
 - **SiliconFlow**: Qwen/Qwen2.5-7B-Instruct
 - **Aliyun**: qwen3-max-2026-01-23, glm-4.7, qwen3-max-preview, 等18个模型
 - **MiniMax**: MiniMax-M2.5, MiniMax-M2
-- **NVIDIA**: z-ai/glm5
+- **NVIDIA**: 185+ 模型，含 moonshotai/kimi-k2.5、moonshotai/kimi-k2-instruct、z-ai/glm5 等
 - **iFlow**: Qwen3-Coder
 - **DeepSeek**: deepseek-chat (V3), deepseek-reasoner (R1)
 - **Ollama**: qwen2.5:7b（本地，PII 隐私保护专用）
@@ -918,13 +945,13 @@ curl -X POST http://localhost:3000/cache/clear
 ```
 代码场景（90%意愿）:
 用户: "写一个 Python 快排"
-→ 90% 概率使用 Groq 免费模型
-→ 10% 概率使用 GPT-4o（付费）
+→ 90% 概率使用 SiliconFlow 免费模型
+→ 10% 概率使用 Claude 3.5 Sonnet（付费）
 
 聊天场景（30%意愿）:
 用户: "你好，今天天气怎么样？"
 → 30% 概率使用免费模型
-→ 70% 概率使用 GPT-4o / Claude（付费体验更好）
+→ 70% 概率使用 DeepSeek V3 / Claude（付费体验更好）
 ```
 
 ### 2. 场景差异化优先级
@@ -933,7 +960,7 @@ curl -X POST http://localhost:3000/cache/clear
 
 | 场景类型 | 优先级策略 | 模型排序 |
 |---------|-----------|---------|
-| **代码生成** | 速度优先 | Groq > SiliconFlow |
+| **代码生成** | 速度优先 | SiliconFlow > Aliyun |
 | **数学推理** | 能力优先 | Mixtral > Qwen |
 | **长文本** | 能力优先 | Qwen > Mixtral |
 | **通用对话** | 先过期优先 | 按过期时间 |
@@ -1006,13 +1033,11 @@ freeTierModels: [
 
 | 模型 | 输入价格/1K | 输出价格/1K | 免费额度 | 特点 |
 |------|------------|------------|---------|------|
-| Groq Llama 3.1 | $0 | $0 | 1M/月 | 🆓 免费、快速 |
-| SiliconFlow Qwen | $0 | $0 | 500K/日 | 🆓 免费、中文好 |
+| Aliyun qwen3-max | $0 | $0 | 1M tokens | 🆓 免费、中文好 |
+| SiliconFlow Qwen2.5-7B | $0 | $0 | 500K/日 | 🆓 免费、快速 |
 | DeepSeek V3 | $0.00027 | $0.0011 | - | 高性价比 |
 | DeepSeek R1 | $0.00055 | $0.00219 | - | 推理强 |
-| GPT-4o Mini | $0.00015 | $0.0006 | - | 最经济 |
 | Claude 3 Haiku | $0.00025 | $0.00125 | - | 快速 |
-| GPT-4o | $0.005 | $0.015 | - | 全能 |
 | Claude 3.5 Sonnet | $0.003 | $0.015 | - | 代码强 |
 | Kimi K2.5 | $0.002 | $0.006 | - | 长文本 |
 
@@ -1060,7 +1085,7 @@ freeTierModels: [
 - [SiliconFlow](https://siliconflow.cn/) - 开源模型托管
 - [阿里云百炼](https://www.aliyun.com/product/bailian) - 18个免费模型
 - [MiniMax](https://www.minimaxi.com/) - 海螺AI模型
-- [NVIDIA](https://www.nvidia.com/) - GLM-5模型
+- [NVIDIA](https://build.nvidia.com/) - 185+ 模型托管（含 Kimi、GLM 等）
 - [iFlow](https://iflow.cn/) - Qwen3-Coder模型
 - [DeepSeek](https://www.deepseek.com/) - DeepSeek V3 / R1模型
 
