@@ -1,5 +1,6 @@
 // MyLLM Gateway Web UI
 const API_BASE = '';
+const _charts = {};
 
 // 页面切换
 function initNavigation() {
@@ -74,7 +75,7 @@ async function loadDashboard() {
     loadQuotaList(health);
     
     // 初始化图表
-    initCharts();
+    initCharts(stats);
   } catch (err) {
     console.error('加载仪表盘失败:', err);
   }
@@ -100,17 +101,19 @@ function loadQuotaList(health) {
   `).join('') || '<div class="placeholder">暂无可用免费额度</div>';
 }
 
-function initCharts() {
-  // 请求趋势图
+function initCharts(stats) {
+  // 请求趋势图 - 使用真实小时数据
   const requestsCtx = document.getElementById('requestsChart');
   if (requestsCtx) {
-    new Chart(requestsCtx, {
+    if (_charts.requests) { _charts.requests.destroy(); }
+    const hourlyData = Array.from({length: 24}, (_, i) => (stats?.hourlyRequests?.[i] || 0));
+    _charts.requests = new Chart(requestsCtx, {
       type: 'line',
       data: {
         labels: Array.from({length: 24}, (_, i) => `${i}:00`),
         datasets: [{
           label: '请求数',
-          data: Array.from({length: 24}, () => Math.floor(Math.random() * 100)),
+          data: hourlyData,
           borderColor: '#6366f1',
           backgroundColor: 'rgba(99, 102, 241, 0.1)',
           fill: true,
@@ -128,17 +131,23 @@ function initCharts() {
       }
     });
   }
-  
-  // 模型分布图
+
+  // 模型分布图 - 使用真实模型分布数据
   const modelsCtx = document.getElementById('modelsChart');
   if (modelsCtx) {
-    new Chart(modelsCtx, {
+    if (_charts.models) { _charts.models.destroy(); }
+    const modelDist = stats?.modelDistribution || {};
+    const modelEntries = Object.entries(modelDist).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    const labels = modelEntries.length ? modelEntries.map(e => e[0]) : ['暂无数据'];
+    const data = modelEntries.length ? modelEntries.map(e => e[1]) : [1];
+    const colors = ['#6366f1', '#22c55e', '#f59e0b', '#64748b', '#ec4899', '#14b8a6'];
+    _charts.models = new Chart(modelsCtx, {
       type: 'doughnut',
       data: {
-        labels: ['Kimi', 'Claude', 'GPT-4', '其他'],
+        labels,
         datasets: [{
-          data: [40, 30, 20, 10],
-          backgroundColor: ['#6366f1', '#22c55e', '#f59e0b', '#64748b']
+          data,
+          backgroundColor: colors.slice(0, labels.length)
         }]
       },
       options: {
@@ -155,24 +164,25 @@ function initCharts() {
 // ============ 模型管理 ============
 async function loadModels() {
   try {
-    const health = await fetch(`${API_BASE}/health`).then(r => r.json());
+    const data = await fetch(`${API_BASE}/models`).then(r => r.json());
     const tbody = document.querySelector('#models-table tbody');
-    
-    tbody.innerHTML = health.models?.map(m => `
+
+    tbody.innerHTML = data.models?.map(m => `
       <tr>
-        <td>${m.name || m.id}</td>
-        <td>${m.provider}</td>
-        <td>${m.tags?.map(t => `<span class="tag tag-blue">${t}</span>`).join(' ') || '-'}</td>
+        <td>${escapeHtml(m.name || m.id)}</td>
+        <td>${escapeHtml(m.provider)}</td>
+        <td>${m.tags?.map(t => `<span class="tag tag-blue">${escapeHtml(t)}</span>`).join(' ') || '-'}</td>
         <td>${(m.contextWindow / 1000).toFixed(0)}K</td>
         <td>$${m.costPer1KInput || 0}</td>
         <td>
           <label class="switch">
-            <input type="checkbox" ${m.enabled ? 'checked' : ''} onchange="toggleModel('${m.id}', this.checked)">
+            <input type="checkbox" ${m.enabled ? 'checked' : ''} data-model-id="${escapeHtml(m.id)}" data-action="toggle">
             <span class="slider"></span>
           </label>
         </td>
         <td>
-          <button class="btn btn-sm btn-secondary" onclick="editModel('${m.id}')">编辑</button>
+          <button class="btn btn-sm btn-secondary" data-model-id="${escapeHtml(m.id)}" data-action="edit">编辑</button>
+          <button class="btn btn-sm btn-danger" data-model-id="${escapeHtml(m.id)}" data-action="delete">删除</button>
         </td>
       </tr>
     `).join('') || '<tr><td colspan="7" class="placeholder">暂无模型数据</td></tr>';
@@ -181,18 +191,123 @@ async function loadModels() {
   }
 }
 
-function toggleModel(modelId, enabled) {
-  // TODO: 调用 API 切换模型状态
-  console.log('切换模型状态:', modelId, enabled);
+async function toggleModel(modelId, enabled) {
+  try {
+    await fetch(`${API_BASE}/models/${encodeURIComponent(modelId)}/toggle`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    });
+  } catch (err) {
+    console.error('切换模型状态失败:', err);
+  }
 }
 
-function editModel(modelId) {
-  // TODO: 打开编辑弹窗
-  console.log('编辑模型:', modelId);
+let _editingModelId = null;
+
+function openModelModal(model) {
+  _editingModelId = model ? model.id : null;
+  document.getElementById('model-modal-title').textContent = model ? '编辑模型' : '添加模型';
+
+  document.getElementById('model-id').value = model?.id || '';
+  document.getElementById('model-id').disabled = !!model;
+  document.getElementById('model-name').value = model?.name || '';
+  document.getElementById('model-provider').value = model?.provider || 'anthropic';
+  document.getElementById('model-context').value = model?.contextWindow || 4096;
+  document.getElementById('model-cost-input').value = model?.costPer1KInput || 0;
+  document.getElementById('model-cost-output').value = model?.costPer1KOutput || 0;
+  document.getElementById('model-tags').value = model?.tags?.join(', ') || '';
+  document.getElementById('model-priority').value = model?.priority || 1;
+  document.getElementById('model-enabled').checked = model ? model.enabled : true;
+
+  document.querySelectorAll('input[name="capability"]').forEach(cb => {
+    cb.checked = model ? (model.capabilities?.includes(cb.value) || false) : cb.value === 'text';
+  });
+
+  document.getElementById('model-modal').classList.add('open');
+}
+
+function closeModelModal() {
+  document.getElementById('model-modal').classList.remove('open');
+  _editingModelId = null;
 }
 
 function showAddModelModal() {
-  alert('添加模型功能开发中...');
+  openModelModal(null);
+}
+
+async function editModel(modelId) {
+  try {
+    const data = await fetch(`${API_BASE}/models`).then(r => r.json());
+    const model = data.models?.find(m => m.id === modelId);
+    if (model) openModelModal(model);
+  } catch (err) {
+    alert('加载模型失败: ' + err.message);
+  }
+}
+
+async function deleteModel(modelId) {
+  if (!confirm(`确定要删除模型 "${modelId}" 吗？`)) return;
+  try {
+    const res = await fetch(`${API_BASE}/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      loadModels();
+    } else {
+      alert('删除失败: ' + (data.error || '未知错误'));
+    }
+  } catch (err) {
+    alert('删除失败: ' + err.message);
+  }
+}
+
+async function saveModel() {
+  const id = document.getElementById('model-id').value.trim();
+  const name = document.getElementById('model-name').value.trim();
+  const provider = document.getElementById('model-provider').value;
+
+  if (!id || !name || !provider) {
+    alert('请填写必填字段: 模型ID、显示名称、供应商');
+    return;
+  }
+
+  const capabilities = Array.from(document.querySelectorAll('input[name="capability"]:checked')).map(cb => cb.value);
+  const tagsRaw = document.getElementById('model-tags').value;
+  const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+  const payload = {
+    id, name, provider,
+    contextWindow: parseInt(document.getElementById('model-context').value) || 4096,
+    costPer1KInput: parseFloat(document.getElementById('model-cost-input').value) || 0,
+    costPer1KOutput: parseFloat(document.getElementById('model-cost-output').value) || 0,
+    capabilities,
+    tags,
+    priority: parseInt(document.getElementById('model-priority').value) || 1,
+    enabled: document.getElementById('model-enabled').checked
+  };
+
+  try {
+    const url = _editingModelId
+      ? `${API_BASE}/models/${encodeURIComponent(_editingModelId)}`
+      : `${API_BASE}/models`;
+    const method = _editingModelId ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      closeModelModal();
+      loadModels();
+    } else {
+      alert('保存失败: ' + (data.error || '未知错误'));
+    }
+  } catch (err) {
+    alert('保存失败: ' + err.message);
+  }
 }
 
 // ============ 路由配置 ============
@@ -217,8 +332,8 @@ async function loadRouting() {
           </div>
         </div>
         <div>
-          <button class="btn btn-sm btn-secondary" onclick="editRoute()">编辑</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteRoute()">删除</button>
+          <button class="btn btn-sm btn-secondary" data-action="edit-route">编辑</button>
+          <button class="btn btn-sm btn-danger" data-action="delete-route">删除</button>
         </div>
       </div>
     `).join('');
@@ -296,14 +411,30 @@ async function clearCache() {
 }
 
 // ============ 测试工具 ============
+let _playgroundModels = [];
+
+function renderModelOptions(filter) {
+  const select = document.getElementById('playground-model');
+  const q = (filter || '').toLowerCase();
+  const filtered = q
+    ? _playgroundModels.filter(m =>
+        (m.name || m.id).toLowerCase().includes(q) ||
+        m.provider.toLowerCase().includes(q)
+      )
+    : _playgroundModels;
+  select.innerHTML = '<option value="auto">自动路由</option>' +
+    filtered.map(m => `<option value="${m.provider}::${m.id}">${m.name || m.id} (${m.provider})</option>`).join('');
+}
+
 async function loadPlayground() {
   try {
     const health = await fetch(`${API_BASE}/health`).then(r => r.json());
-    const select = document.getElementById('playground-model');
-    
-    // 保留 auto 选项，添加模型选项
-    select.innerHTML = '<option value="auto">自动路由</option>' +
-      health.models?.map(m => `<option value="${m.id}">${m.name || m.id}</option>`).join('');
+    _playgroundModels = health.models || [];
+    renderModelOptions('');
+
+    document.getElementById('playground-model-search').addEventListener('input', e => {
+      renderModelOptions(e.target.value);
+    });
   } catch (err) {
     console.error('加载模型列表失败:', err);
   }
@@ -348,17 +479,11 @@ async function sendPlaygroundRequest() {
     
     const data = await res.json();
     const latency = Date.now() - startTime;
-    
-    if (data.error) {
-      outputContent.innerHTML = `<div style="color: var(--danger);">错误: ${data.error.message}</div>`;
-      return;
-    }
-    
-    const content = data.choices?.[0]?.message?.content || '无响应内容';
-    outputContent.innerHTML = `<div>${escapeHtml(content)}</div>`;
-    
+
+    outputContent.innerHTML = `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+
     outputMeta.innerHTML = `
-      <span class="tag tag-blue">${data.model}</span>
+      <span class="tag tag-blue">${data.model || ''}</span>
       <span class="tag tag-green">${latency}ms</span>
       ${data.cached ? '<span class="tag tag-orange">缓存</span>' : ''}
     `;
@@ -383,31 +508,71 @@ async function loadLogs() {
 async function searchLogs() {
   const date = document.getElementById('log-date').value;
   const search = document.getElementById('log-search').value;
-  
+
   try {
-    // 模拟日志数据
-    const logs = [
-      { id: 'abc123', model: 'moonshot-v1-8k', provider: 'moonshot', latency: 1200, time: new Date().toISOString() },
-      { id: 'def456', model: 'claude-3-5-sonnet', provider: 'anthropic', latency: 2300, time: new Date().toISOString() }
-    ];
-    
+    const url = date ? `/logs?date=${date}` : '/logs';
+    const res = await fetch(url);
+    const data = await res.json();
+    let logs = data.logs || [];
+
+    if (search) {
+      const q = search.toLowerCase();
+      logs = logs.filter(log =>
+        (log.model || '').toLowerCase().includes(q) ||
+        (log.provider || '').toLowerCase().includes(q) ||
+        (log.id || '').toLowerCase().includes(q)
+      );
+    }
+
     const container = document.getElementById('logs-list');
+    if (logs.length === 0) {
+      container.innerHTML = '<div class="placeholder">暂无日志记录</div>';
+      return;
+    }
     container.innerHTML = logs.map(log => `
-      <div class="log-item">
+      <div class="log-item" data-id="${escapeHtml(log.id)}" data-date="${date}">
         <div class="log-header">
-          <span class="log-model">${log.model}</span>
-          <span class="log-time">${new Date(log.time).toLocaleString()}</span>
+          <span class="log-model">${escapeHtml(log.model || '')}</span>
+          <span class="log-time">${new Date(log.timestamp).toLocaleString()}</span>
         </div>
         <div class="log-meta">
-          <span>Provider: ${log.provider}</span>
-          <span>Latency: ${log.latency}ms</span>
-          <span>ID: ${log.id}</span>
+          <span>Provider: ${escapeHtml(log.provider || '')}</span>
+          <span>Latency: ${log.latency != null ? log.latency + 'ms' : '-'}</span>
+          <span>Status: ${escapeHtml(log.status || '')}</span>
+          <span>ID: ${escapeHtml(log.id || '')}</span>
         </div>
       </div>
     `).join('');
   } catch (err) {
     console.error('加载日志失败:', err);
   }
+}
+
+async function openLogDetail(id, date) {
+  const url = date ? `/logs/${id}?date=${date}` : `/logs/${id}`;
+  const modal = document.getElementById('log-modal');
+  document.getElementById('modal-title').textContent = `请求详情 — ${id}`;
+  document.getElementById('modal-request').textContent = '加载中...';
+  document.getElementById('modal-response').textContent = '加载中...';
+  modal.classList.add('open');
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Not found');
+    const log = await res.json();
+    document.getElementById('modal-request').textContent =
+      JSON.stringify(log.request, null, 2);
+    document.getElementById('modal-response').textContent =
+      JSON.stringify(log.response, null, 2);
+  } catch (err) {
+    document.getElementById('modal-request').textContent = '加载失败';
+    document.getElementById('modal-response').textContent = String(err);
+  }
+}
+
+function closeLogModal(event) {
+  if (event && event.target !== document.getElementById('log-modal')) return;
+  document.getElementById('log-modal').classList.remove('open');
 }
 
 // ============ 系统设置 ============
@@ -433,4 +598,48 @@ function refreshData() {
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
   loadDashboard();
+
+  // 按钮绑定
+  document.getElementById('btn-refresh').addEventListener('click', refreshData);
+  document.getElementById('btn-add-model').addEventListener('click', showAddModelModal);
+  document.getElementById('btn-add-route').addEventListener('click', showAddRouteModal);
+  document.getElementById('btn-clear-cache').addEventListener('click', clearCache);
+  document.getElementById('btn-send-playground').addEventListener('click', sendPlaygroundRequest);
+  document.getElementById('btn-search-logs').addEventListener('click', searchLogs);
+
+  // 模型弹窗
+  document.getElementById('model-modal-close').addEventListener('click', closeModelModal);
+  document.getElementById('model-modal-cancel').addEventListener('click', closeModelModal);
+  document.getElementById('model-modal-save').addEventListener('click', saveModel);
+  document.getElementById('model-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModelModal();
+  });
+
+  // 日志列表事件委托
+  document.getElementById('logs-list').addEventListener('click', e => {
+    const item = e.target.closest('.log-item');
+    if (item) openLogDetail(item.dataset.id, item.dataset.date);
+  });
+
+  // 模型表格事件委托
+  document.getElementById('models-table').addEventListener('change', e => {
+    if (e.target.dataset.action === 'toggle') {
+      toggleModel(e.target.dataset.modelId, e.target.checked);
+    }
+  });
+  document.getElementById('models-table').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const modelId = btn.dataset.modelId;
+    if (btn.dataset.action === 'edit') editModel(modelId);
+    if (btn.dataset.action === 'delete') deleteModel(modelId);
+  });
+
+  // 弹窗关闭
+  document.getElementById('log-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+  });
+  document.getElementById('modal-close-btn').addEventListener('click', () => {
+    document.getElementById('log-modal').classList.remove('open');
+  });
 });

@@ -4,6 +4,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { loadConfig } from './config/default.js';
 import { RoutingEngine } from './core/router.js';
 import { Monitor, RequestLog, FullRequestLog } from './core/monitor.js';
@@ -71,6 +73,13 @@ class LLMGateway {
 
     this.setupMiddleware();
     this.setupRoutes();
+
+    // 确保 config.json 存在，首次运行时初始化
+    const configPath = path.join(process.cwd(), 'config.json');
+    if (!fs.existsSync(configPath)) {
+      this.saveConfig();
+      console.log('📄 已初始化 config.json');
+    }
   }
 
   private initializeProviders(): void {
@@ -265,9 +274,13 @@ class LLMGateway {
     this.app.get('/stats', (req, res) => {
       const stats = this.monitor.getRealtimeMetrics();
       const quotaStatus = this.router.getQuotaStatus();
-      
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const detailedStats = this.monitor.getStats({ start: since24h, end: new Date() });
+
       res.json({
         ...stats,
+        hourlyRequests: detailedStats.hourlyRequests,
+        modelDistribution: detailedStats.modelDistribution,
         freeTier: {
           total: quotaStatus.length,
           available: quotaStatus.filter(q => q.remaining > 0).length,
@@ -362,6 +375,7 @@ class LLMGateway {
               object: 'chat.completion',
               created: Math.floor(Date.now() / 1000),
               model: cached.response.model,
+              provider: 'cache',
               choices: [{
                 index: 0,
                 message: {
@@ -469,6 +483,7 @@ class LLMGateway {
           let fullContent = '';
           let hasStarted = false;
           let currentModel = initialDecision.model;
+          let currentProvider = initialDecision.provider;
 
           const result = await this.retryManager.executeStreamWithRetry(
             request,
@@ -482,6 +497,7 @@ class LLMGateway {
                 id: requestId,
                 object: 'chat.completion.chunk',
                 model: currentModel,
+                provider: currentProvider,
                 choices: [{
                   delta: { content: chunk },
                   index: 0,
@@ -538,6 +554,7 @@ class LLMGateway {
             id: requestId,
             object: 'chat.completion.chunk',
             model: result.decision.model,
+            provider: result.decision.provider,
             choices: [{
               delta: {},
               index: 0,
@@ -586,6 +603,7 @@ class LLMGateway {
             object: 'chat.completion',
             created: Math.floor(Date.now() / 1000),
             model: result.decision.model,
+            provider: result.decision.provider,
             choices: [{
               index: 0,
               message: {
@@ -640,6 +658,66 @@ class LLMGateway {
     this.app.post('/cache/clear', async (req, res) => {
       await this.semanticCache.clear();
       res.json({ success: true, message: 'Cache cleared' });
+    });
+
+    // 模型管理 API
+    this.app.get('/models', (req, res) => {
+      res.json({ models: this.config.models });
+    });
+
+    this.app.post('/models', (req, res) => {
+      const { id, name, provider, contextWindow, costPer1KInput, costPer1KOutput, capabilities, tags, priority, enabled } = req.body;
+      if (!id || !name || !provider) {
+        return res.status(400).json({ error: '缺少必填字段: id, name, provider' });
+      }
+      if (this.config.models.find(m => m.id === id)) {
+        return res.status(409).json({ error: `模型 ${id} 已存在` });
+      }
+      const newModel: ModelConfig = {
+        id, name, provider,
+        contextWindow: contextWindow || 4096,
+        costPer1KInput: costPer1KInput || 0,
+        costPer1KOutput: costPer1KOutput || 0,
+        capabilities: capabilities || ['text'],
+        tags: tags || [],
+        priority: priority || 1,
+        enabled: enabled !== false
+      };
+      this.config.models.push(newModel);
+      const providerConfig = this.config.providers.find(p => p.name === provider);
+      if (providerConfig && !providerConfig.models.includes(id)) {
+        providerConfig.models.push(id);
+      }
+      this.saveConfig();
+      res.json({ success: true, model: newModel });
+    });
+
+    this.app.put('/models/:id', (req, res) => {
+      const idx = this.config.models.findIndex(m => m.id === req.params.id);
+      if (idx === -1) return res.status(404).json({ error: `模型 ${req.params.id} 不存在` });
+      this.config.models[idx] = { ...this.config.models[idx], ...req.body };
+      this.saveConfig();
+      res.json({ success: true, model: this.config.models[idx] });
+    });
+
+    this.app.patch('/models/:id/toggle', (req, res) => {
+      const model = this.config.models.find(m => m.id === req.params.id);
+      if (!model) return res.status(404).json({ error: `模型 ${req.params.id} 不存在` });
+      model.enabled = req.body.enabled;
+      this.saveConfig();
+      res.json({ success: true, model });
+    });
+
+    this.app.delete('/models/:id', (req, res) => {
+      const idx = this.config.models.findIndex(m => m.id === req.params.id);
+      if (idx === -1) return res.status(404).json({ error: `模型 ${req.params.id} 不存在` });
+      const [removed] = this.config.models.splice(idx, 1);
+      const providerConfig = this.config.providers.find(p => p.name === removed.provider);
+      if (providerConfig) {
+        providerConfig.models = providerConfig.models.filter(m => m !== removed.id);
+      }
+      this.saveConfig();
+      res.json({ success: true });
     });
 
     // 404 处理
@@ -715,6 +793,15 @@ class LLMGateway {
     };
 
     this.monitor.saveFullRequestLog(fullLog);
+  }
+
+  private saveConfig(): void {
+    try {
+      const configPath = path.join(process.cwd(), 'config.json');
+      fs.writeFileSync(configPath, JSON.stringify(this.config, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('保存配置失败:', err);
+    }
   }
 
   start(): void {

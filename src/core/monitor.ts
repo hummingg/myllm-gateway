@@ -90,6 +90,49 @@ export class Monitor {
         new winston.transports.File({ filename: 'logs/gateway.log' })
       ]
     });
+
+    // 从文件恢复近24小时的请求记录
+    this.loadRecentLogs();
+  }
+
+  private loadRecentLogs(): void {
+    try {
+      const now = new Date();
+      const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      // 可能跨两天，取今天和昨天的目录
+      const dates = [
+        since.toISOString().split('T')[0],
+        now.toISOString().split('T')[0]
+      ].filter((v, i, a) => a.indexOf(v) === i);
+
+      for (const dateStr of dates) {
+        const dayDir = path.join(this.logsDir, dateStr);
+        if (!fs.existsSync(dayDir)) continue;
+        const files = fs.readdirSync(dayDir).filter(f => f.endsWith('.json'));
+        for (const file of files) {
+          try {
+            const raw = JSON.parse(fs.readFileSync(path.join(dayDir, file), 'utf-8')) as FullRequestLog;
+            const ts = new Date(raw.timestamp);
+            if (ts >= since) {
+              this.requests.push({
+                id: raw.id,
+                timestamp: ts,
+                model: raw.model,
+                provider: raw.provider,
+                inputTokens: raw.inputTokens,
+                outputTokens: raw.outputTokens,
+                cost: raw.cost,
+                latency: raw.latency,
+                status: raw.status,
+                routingReason: raw.routingReason,
+                userAgent: raw.userAgent,
+                error: raw.error
+              });
+            }
+          } catch (_e) { /* 跳过损坏的文件 */ }
+        }
+      }
+    } catch (_e) { /* 加载失败不影响启动 */ }
   }
 
   // 记录请求

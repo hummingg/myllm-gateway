@@ -203,6 +203,11 @@ body {
   padding: 20px;
 }
 
+.chart-card canvas {
+  height: 250px !important;
+  max-height: 250px;
+}
+
 .chart-card h3 {
   margin-bottom: 16px;
   font-size: 16px;
@@ -333,7 +338,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: var(--border);
+  background: white;
   border-radius: 24px;
   transition: 0.3s;
 }
@@ -345,7 +350,7 @@ body {
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background: white;
+  background: #64748b;
   border-radius: 50%;
   transition: 0.3s;
 }
@@ -356,6 +361,7 @@ input:checked + .slider {
 
 input:checked + .slider:before {
   transform: translateX(20px);
+  background: white;
 }
 
 /* 进度条 */
@@ -422,6 +428,10 @@ textarea:focus {
   margin-bottom: 8px;
   font-size: 14px;
   font-weight: 500;
+}
+
+#playground-model-search {
+  margin-bottom: 6px;
 }
 
 .param-row {
@@ -532,6 +542,12 @@ textarea:focus {
 .log-item {
   padding: 16px;
   border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.log-item:hover {
+  background: var(--bg-hover, rgba(0,0,0,0.04));
 }
 
 .log-item:last-child {
@@ -571,6 +587,136 @@ textarea:focus {
 
 .settings-section h3 {
   margin-bottom: 16px;
+}
+
+/* 弹窗 */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-overlay.open {
+  display: flex;
+}
+
+.modal-box {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  width: 90%;
+  max-width: 800px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.modal-body {
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* 表单样式 */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.form-input {
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus {
+  border-color: var(--primary);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.checkbox-group label,
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.modal-body pre {
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
 }
 
 /* 响应式 */

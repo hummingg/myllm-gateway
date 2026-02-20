@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MyLLM Gateway - 管理面板</title>
   <link rel="stylesheet" href="/webui/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/webui/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="container">
@@ -52,7 +52,7 @@
       <header class="header">
         <h2 id="page-title">仪表盘</h2>
         <div class="header-actions">
-          <button class="btn btn-secondary" onclick="refreshData()">
+          <button class="btn btn-secondary" id="btn-refresh">
             <span class="icon">🔄</span> 刷新
           </button>
         </div>
@@ -116,7 +116,7 @@
         <div id="models" class="page">
           <div class="section-header">
             <h3>模型列表</h3>
-            <button class="btn btn-primary" onclick="showAddModelModal()">
+            <button class="btn btn-primary" id="btn-add-model">
               <span class="icon">➕</span> 添加模型
             </button>
           </div>
@@ -144,7 +144,7 @@
         <div id="routing" class="page">
           <div class="section-header">
             <h3>关键词路由规则</h3>
-            <button class="btn btn-primary" onclick="showAddRouteModal()">
+            <button class="btn btn-primary" id="btn-add-route">
               <span class="icon">➕</span> 添加规则
             </button>
           </div>
@@ -165,7 +165,7 @@
           <div class="section-header">
             <h3>语义缓存</h3>
             <div>
-              <button class="btn btn-danger" onclick="clearCache()">
+              <button class="btn btn-danger" id="btn-clear-cache">
                 <span class="icon">🗑️</span> 清空缓存
               </button>
             </div>
@@ -187,6 +187,7 @@
             <div class="playground-input">
               <div class="input-group">
                 <label>模型</label>
+                <input type="text" id="playground-model-search" placeholder="搜索模型...">
                 <select id="playground-model">
                   <option value="auto">自动路由</option>
                 </select>
@@ -206,7 +207,7 @@
                   <span>Max Tokens: <input type="number" id="playground-maxtokens" value="1000" min="1" max="4096"></span>
                 </div>
               </div>
-              <button class="btn btn-primary btn-block" onclick="sendPlaygroundRequest()">
+              <button class="btn btn-primary btn-block" id="btn-send-playground">
                 <span class="icon">▶️</span> 发送请求
               </button>
             </div>
@@ -229,7 +230,7 @@
             <div class="filter-group">
               <input type="date" id="log-date" placeholder="选择日期">
               <input type="text" id="log-search" placeholder="搜索模型、关键词...">
-              <button class="btn btn-secondary" onclick="searchLogs()">搜索</button>
+              <button class="btn btn-secondary" id="btn-search-logs">搜索</button>
             </div>
           </div>
           <div class="logs-list" id="logs-list">
@@ -254,6 +255,102 @@
         </div>
       </div>
     </main>
+  </div>
+
+  <!-- 模型管理弹窗 -->
+  <div id="model-modal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 560px;">
+      <div class="modal-header">
+        <span id="model-modal-title">添加模型</span>
+        <button class="modal-close" id="model-modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">模型 ID *</label>
+          <input type="text" class="form-input" id="model-id" placeholder="如: gpt-4o">
+        </div>
+        <div class="form-group">
+          <label class="form-label">显示名称 *</label>
+          <input type="text" class="form-input" id="model-name" placeholder="如: GPT-4o">
+        </div>
+        <div class="form-group">
+          <label class="form-label">供应商 *</label>
+          <select class="form-input" id="model-provider">
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+            <option value="moonshot">Moonshot</option>
+            <option value="siliconflow">SiliconFlow</option>
+            <option value="aliyun">Aliyun</option>
+            <option value="minimax">MiniMax</option>
+            <option value="nvidia">NVIDIA</option>
+            <option value="iflow">iFlow</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="ollama">Ollama</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">上下文窗口</label>
+            <input type="number" class="form-input" id="model-context" value="4096" min="1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">输入成本/1K ($)</label>
+            <input type="number" class="form-input" id="model-cost-input" value="0" step="0.0001" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">输出成本/1K ($)</label>
+            <input type="number" class="form-input" id="model-cost-output" value="0" step="0.0001" min="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">能力</label>
+          <div class="checkbox-group">
+            <label><input type="checkbox" name="capability" value="text" checked> 文本</label>
+            <label><input type="checkbox" name="capability" value="image"> 图像</label>
+            <label><input type="checkbox" name="capability" value="code"> 代码</label>
+            <label><input type="checkbox" name="capability" value="reasoning"> 推理</label>
+            <label><input type="checkbox" name="capability" value="long_context"> 长上下文</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">标签（逗号分隔）</label>
+          <input type="text" class="form-input" id="model-tags" placeholder="如: 国外部署, 高速">
+        </div>
+        <div class="form-group">
+          <label class="form-label">优先级</label>
+          <input type="number" class="form-input" id="model-priority" value="1" min="1" max="100">
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="model-enabled" checked> 启用此模型
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="model-modal-cancel">取消</button>
+        <button class="btn btn-primary" id="model-modal-save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 日志详情弹窗 -->
+  <div id="log-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span id="modal-title">请求详情</span>
+        <button class="modal-close" id="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="modal-section-title">请求体</div>
+          <pre id="modal-request"></pre>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-title">响应体</div>
+          <pre id="modal-response"></pre>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="/webui/app.js"></script>
