@@ -298,7 +298,7 @@ export class RoutingEngine {
     }
 
     // 2. 计算输入长度（提前计算，供后续使用）
-    const inputLength = messages.reduce((sum, m) => sum + m.content.length, 0);
+    const inputLength = messages.reduce((sum, m) => sum + this.extractTextContent(m.content).length, 0);
 
     // 3. 关键词标签路由检测
     const keywordRoute = this.detectKeywordTagRoute(messages);
@@ -612,7 +612,7 @@ export class RoutingEngine {
 
   // 检测任务类型
   private detectTaskType(messages: ChatMessage[]): string[] {
-    const content = messages.map(m => m.content.toLowerCase()).join(' ');
+    const content = messages.map(m => this.extractTextContent(m.content).toLowerCase()).join(' ');
     const types: string[] = [];
     
     // 代码相关
@@ -742,6 +742,18 @@ export class RoutingEngine {
 
   // ==================== 关键词标签路由 ====================
 
+  /** 从消息 content 中提取纯文本（兼容字符串和多模态数组格式） */
+  private extractTextContent(content: any): string {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      return content
+        .filter((p: any) => p.type === 'text' && typeof p.text === 'string')
+        .map((p: any) => p.text)
+        .join(' ');
+    }
+    return '';
+  }
+
   /**
    * 提取被中括号包围的内容
    * 支持：【】, [], （）, ()
@@ -775,7 +787,7 @@ export class RoutingEngine {
     if (keywordRoutes.length === 0) return null;
 
     // 合并所有消息内容
-    const content = messages.map(m => m.content).join(' ');
+    const content = messages.map(m => this.extractTextContent(m.content)).join(' ');
     
     // 提取被中括号包围的内容
     const bracketedContents = this.extractBracketedContent(content);
@@ -790,7 +802,7 @@ export class RoutingEngine {
       
       for (const bracketed of bracketedContents) {
         for (const kw of route.keywords) {
-          if (bracketed === kw.toLowerCase() || bracketed.includes(kw.toLowerCase())) {
+          if (bracketed === kw.toLowerCase()) {
             matchedKeywords.push(kw);
           }
         }
