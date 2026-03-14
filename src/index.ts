@@ -10,7 +10,7 @@ import { loadConfig } from './config/default.js';
 import { RoutingEngine } from './core/router.js';
 import { Monitor, RequestLog, FullRequestLog } from './core/monitor.js';
 import { QuotaManager } from './core/quota.js';
-import { BaseProvider, OpenAIProvider, AnthropicProvider, MoonshotProvider, GroqProvider, SiliconFlowProvider, AliyunProvider, MinimaxProvider, NvidiaProvider, IflowProvider, DeepSeekProvider, OllamaProvider, ChatCompletionRequest } from './providers/base.js';
+import { BaseProvider, ProviderBalance, OpenAIProvider, AnthropicProvider, MoonshotProvider, GroqProvider, SiliconFlowProvider, AliyunProvider, MinimaxProvider, NvidiaProvider, IflowProvider, DeepSeekProvider, OllamaProvider, ChatCompletionRequest } from './providers/base.js';
 import { GatewayConfig, ModelConfig, ProviderConfig, RetryConfig } from './types/config.js';
 import { RetryManager } from './core/retry.js';
 import { ErrorType } from './types/error.js';
@@ -268,6 +268,29 @@ class LLMGateway {
         success: true, 
         message: `已注册免费额度: ${provider}:${model}` 
       });
+    });
+
+    // 查询所有支持余额查询的 provider 余额
+    this.app.get('/balance', async (req, res) => {
+      const balances: ProviderBalance[] = [];
+      for (const [name, provider] of this.providers) {
+        const balance = await provider.checkBalance();
+        if (balance) balances.push(balance);
+      }
+      res.json({ balances });
+    });
+
+    // 查询指定 provider 的余额
+    this.app.get('/balance/:provider', async (req, res) => {
+      const provider = this.providers.get(req.params.provider);
+      if (!provider) {
+        return res.status(404).json({ error: `供应商 ${req.params.provider} 不存在` });
+      }
+      const balance = await provider.checkBalance();
+      if (!balance) {
+        return res.json({ balance: null, message: '该供应商不支持余额查询' });
+      }
+      res.json({ balance });
     });
 
     // 获取统计数据

@@ -27,6 +27,13 @@ export interface ChatCompletionResponse {
   finishReason: string;
 }
 
+export interface ProviderBalance {
+  provider: string;
+  available: number;
+  currency: string;
+  raw?: any;
+}
+
 export abstract class BaseProvider {
   protected config: ProviderConfig;
   protected models: ModelConfig[];
@@ -38,9 +45,13 @@ export abstract class BaseProvider {
 
   abstract chatCompletion(request: ChatCompletionRequest): Promise<ChatCompletionResponse>;
   abstract streamChatCompletion(
-    request: ChatCompletionRequest, 
+    request: ChatCompletionRequest,
     onChunk: (chunk: string) => void
   ): Promise<ChatCompletionResponse>;
+
+  async checkBalance(): Promise<ProviderBalance | null> {
+    return null;
+  }
 
   isEnabled(): boolean {
     return this.config.enabled && !!this.config.apiKey;
@@ -286,6 +297,25 @@ export class MoonshotProvider extends OpenAIProvider {
   constructor(config: ProviderConfig, models: ModelConfig[]) {
     super(config, models);
   }
+
+  async checkBalance(): Promise<ProviderBalance | null> {
+    try {
+      const baseUrl = this.config.baseUrl || 'https://api.moonshot.cn/v1';
+      const res = await fetch(`${baseUrl}/users/me/balance`, {
+        headers: { 'Authorization': `Bearer ${this.config.apiKey}` }
+      });
+      if (!res.ok) return null;
+      const data: any = await res.json();
+      return {
+        provider: 'moonshot',
+        available: data.data?.available_balance ?? data.available_balance ?? 0,
+        currency: data.data?.currency ?? data.currency ?? 'CNY',
+        raw: data
+      };
+    } catch {
+      return null;
+    }
+  }
 }
 
 // Groq 适配器（OpenAI 兼容）
@@ -431,6 +461,29 @@ export class IflowProvider extends OpenAIProvider {
 export class DeepSeekProvider extends OpenAIProvider {
   constructor(config: ProviderConfig, models: ModelConfig[]) {
     super(config, models);
+  }
+
+  async checkBalance(): Promise<ProviderBalance | null> {
+    try {
+      const baseUrl = (this.config.baseUrl || 'https://api.deepseek.com').replace(/\/v1\/?$/, '');
+      const res = await fetch(`${baseUrl}/user/balance`, {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${this.config.apiKey}`
+        }
+      });
+      if (!res.ok) return null;
+      const data: any = await res.json();
+      const info = data.balance_infos?.[0];
+      return {
+        provider: 'deepseek',
+        available: info ? parseFloat(info.total_balance) : 0,
+        currency: info?.currency || 'CNY',
+        raw: data
+      };
+    } catch {
+      return null;
+    }
   }
 }
 

@@ -576,7 +576,31 @@ function closeLogModal(event) {
 }
 
 // ============ 系统设置 ============
+async function loadBalance() {
+  const container = document.getElementById('balance-list');
+  container.innerHTML = '<div class="placeholder">查询中...</div>';
+  try {
+    const data = await fetch(`${API_BASE}/balance`).then(r => r.json());
+    if (!data.balances || data.balances.length === 0) {
+      container.innerHTML = '<div class="placeholder">暂无支持余额查询的供应商</div>';
+      return;
+    }
+    container.innerHTML = data.balances.map(b => `
+      <div class="stat-card">
+        <div class="stat-info">
+          <span class="stat-value">${b.currency} ${b.available.toFixed(2)}</span>
+          <span class="stat-label">${escapeHtml(b.provider)}</span>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    container.innerHTML = '<div class="placeholder">查询余额失败</div>';
+    console.error('查询余额失败:', err);
+  }
+}
+
 async function loadSettings() {
+  await loadBalance();
   document.getElementById('env-list').innerHTML = `
     <div class="placeholder">环境变量列表开发中...</div>
   `;
@@ -606,6 +630,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-clear-cache').addEventListener('click', clearCache);
   document.getElementById('btn-send-playground').addEventListener('click', sendPlaygroundRequest);
   document.getElementById('btn-search-logs').addEventListener('click', searchLogs);
+  document.getElementById('btn-refresh-balance').addEventListener('click', loadBalance);
 
   // 模型弹窗
   document.getElementById('model-modal-close').addEventListener('click', closeModelModal);

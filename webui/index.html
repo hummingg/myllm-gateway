@@ -241,6 +241,17 @@
         <!-- 系统设置页面 -->
         <div id="settings" class="page">
           <div class="settings-section">
+            <div class="section-header" style="margin-bottom: 12px;">
+              <h3>供应商余额</h3>
+              <button class="btn btn-secondary btn-sm" id="btn-refresh-balance">
+                <span class="icon">🔄</span> 刷新
+              </button>
+            </div>
+            <div class="stats-grid" id="balance-list">
+              <div class="placeholder">加载中...</div>
+            </div>
+          </div>
+          <div class="settings-section">
             <h3>环境变量</h3>
             <div class="env-list" id="env-list">
               <!-- 动态加载 -->
